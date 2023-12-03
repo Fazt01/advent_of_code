@@ -26,6 +26,11 @@ name="2022-7"
 path="2022-7/main.rs"
 
 [[bin]]
+name="2022-8"
+path="2022-8/main.rs"
+
+
+[[bin]]
 name="2023-1"
 path="2023-1/main.rs"
 
