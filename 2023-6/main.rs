@@ -12,6 +12,32 @@ struct Race {
 
 impl Race {
     fn possible_ways_to_beat(&self) -> u64 {
+        // function, where wind_up_time is a variable
+        // distance = (best_time-wind_up_time) * speed
+        // distance = (best_time-wind_up_time) * wind_up_time
+        // therefore
+        // y = (best_time-x) * x
+        // y = -x^2 + best_time*x
+        // find where y > distance, so instead just move down by distance and find 0 intersects
+        // 0 = -x^2 + best_time*x - distance
+        // roots:
+        // det = best_time ^ 2 - 4 * (-1) * (-distance)
+        // det = best_time ^ 2 - 4*distance
+        // x1 = (-best_time + det) / (2*(-1))
+        // x2 = (-best_time - det) / (2*(-1))
+        let det: f64 = (self.best_time as f64 * self.best_time as f64 - 4_f64 * self.distance as f64).sqrt();
+        let x1: f64 = (-(self.best_time as f64) - det) / -2_f64;
+        let x2: f64 = (-(self.best_time as f64) + det) / -2_f64;
+        let lower = f64::min(x1,x2);
+        let upper = f64::max(x1,x2);
+        // small eps, To only capture races where I win, not tie. Also due to possible loss of precision
+        let lower = (lower + 0.000001).ceil() as u64;
+        let upper = (upper - 0.000001).trunc() as u64;
+        let upper = u64::min(self.best_time, upper);
+        upper - lower + 1
+    }
+
+    fn possible_ways_to_beat_slow(&self) -> u64 {
         let mut ways = 0;
         for wind_up_time in 0..=self.best_time {
             let speed = wind_up_time;
