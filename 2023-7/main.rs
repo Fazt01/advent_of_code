@@ -21,18 +21,28 @@ impl Ord for Hand {
 }
 
 impl Hand {
-    fn from_str(s: &str) -> Result<Hand> {
+    fn from_str(s: &str, with_jokers: bool) -> Result<Hand> {
         let mut result: Vec<Card> = Vec::new();
         for c in s.chars() {
-            result.push(Card::from_char(c));
+            result.push(Card::from_char(c, with_jokers));
         }
 
         let mut card_counts: HashMap<Card, u8> = HashMap::new();
+        let mut jokers = 0;
         for card in &result {
+            if matches!(card, Card::Joker) {
+                jokers += 1;
+                continue
+            }
             card_counts.insert(*card, *card_counts.get(&card).unwrap_or(&0) + 1);
         }
         let mut card_counts_vec: Vec<(Card, u8)> = card_counts.into_iter().collect();
         card_counts_vec.sort_by_key(|x| Reverse(x.1));
+        if card_counts_vec.len() == 0 {
+            card_counts_vec.push((Card::Joker, 5))
+        } else {
+            card_counts_vec[0].1 = card_counts_vec[0].1 + jokers;
+        }
         Ok(Hand {
             hand: result,
             type_: match &card_counts_vec[..] {
@@ -73,6 +83,7 @@ enum HandType {
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
 enum Card {
+    Joker,
     Num(u8),
     Ten,
     Jack,
@@ -82,12 +93,15 @@ enum Card {
 }
 
 impl Card {
-    fn from_char(c: char) -> Card {
+    fn from_char(c: char, with_jokers: bool) -> Card {
         match c {
             'A' => Card::Ace,
             'K' => Card::King,
             'Q' => Card::Queen,
-            'J' => Card::Jack,
+            'J' => match with_jokers {
+                true => {Card::Joker}
+                false => {Card::Jack}
+            }
             'T' => Card::Ten,
             n => Card::Num(n as u8 - '0' as u8),
         }
@@ -95,28 +109,27 @@ impl Card {
 }
 
 fn main() -> Result<()> {
-    let mut input = parse()?;
+    // bool parameter part 2
+    let mut input = parse(true)?;
 
     input.sort_by(|v1, v2| v1.hand.cmp(&v2.hand));
     let mut sum = 0;
-    for (i, play) in input.iter().rev().enumerate() {
-        println!("{:?} {:?} {}", &play.hand.hand, &play.hand.type_, play.bet);
-        sum += (i as u64 + 1) * play.bet
+    for (i, play) in input.iter().enumerate() {
+        sum += (i as u64 + 1) * play.bet;
     }
 
-    // part 1
     println!("{}", sum);
 
     Ok(())
 }
 
-fn parse() -> Result<Vec<Play>> {
+fn parse(with_jokers: bool) -> Result<Vec<Play>> {
     let stdin = io::stdin();
     stdin.lines().into_iter().map(|line| {
         let line = line?;
         let split = line.split_once(" ").context("missing space in line")?;
         Ok(Play {
-            hand: Hand::from_str(split.0)?,
+            hand: Hand::from_str(split.0, with_jokers)?,
             bet: split.1.parse()?,
         })
     }).collect()
@@ -124,46 +137,31 @@ fn parse() -> Result<Vec<Play>> {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
     use std::cmp::Ordering;
     use crate::Hand;
 
-    #[test]
-    fn same_type() {
-        assert_eq!(Hand::from_str("K32KK").unwrap().cmp(&Hand::from_str("3K2KK").unwrap()), Ordering::Greater)
+    #[rstest]
+    #[case("K32KK", "3K2KK")]
+    #[case("93299", "39299")]
+    #[case("TTTTT", "TTT3T")]
+    #[case("3TTTT", "TTT33")]
+    #[case("3TT3T", "TTTQ3")]
+    #[case("TTTQ3", "QQTT3")]
+    #[case("QQTT3", "QQTA3")]
+    #[case("QQTA3", "Q5TA3")]
+    #[case("234A6", "23457")]
+    fn no_jokers_ordering_greater(#[case] x: &str, #[case] y: &str) {
+        assert_eq!(Hand::from_str(x, false).unwrap().cmp(&Hand::from_str(y, false).unwrap()), Ordering::Greater)
     }
 
     #[test]
-    fn same_type_num() {
-        assert_eq!(Hand::from_str("93299").unwrap().cmp(&Hand::from_str("39299").unwrap()), Ordering::Greater)
+    fn sort_eq() {
+        assert_eq!(Hand::from_str("23456", false).unwrap().cmp(&Hand::from_str("23456", false).unwrap()), Ordering::Equal)
     }
 
     #[test]
-    fn type_five_over_four() {
-        assert_eq!(Hand::from_str("TTTTT").unwrap().cmp(&Hand::from_str("TTT3T").unwrap()), Ordering::Greater)
-    }
-
-    #[test]
-    fn type_four_over_full_house() {
-        assert_eq!(Hand::from_str("3TTTT").unwrap().cmp(&Hand::from_str("TTT33").unwrap()), Ordering::Greater)
-    }
-
-    #[test]
-    fn type_full_house_over_three() {
-        assert_eq!(Hand::from_str("3TT3T").unwrap().cmp(&Hand::from_str("TTTQ3").unwrap()), Ordering::Greater)
-    }
-
-    #[test]
-    fn type_three_over_two_pair() {
-        assert_eq!(Hand::from_str("TTTQ3").unwrap().cmp(&Hand::from_str("QQTT3").unwrap()), Ordering::Greater)
-    }
-
-    #[test]
-    fn type_two_pair_over_pair() {
-        assert_eq!(Hand::from_str("QQTT3").unwrap().cmp(&Hand::from_str("QQTA3").unwrap()), Ordering::Greater)
-    }
-
-    #[test]
-    fn type_pair_over_high() {
-        assert_eq!(Hand::from_str("QQTA3").unwrap().cmp(&Hand::from_str("Q5TA3").unwrap()), Ordering::Greater)
+    fn sort_last() {
+        assert_eq!(Hand::from_str("23456", false).unwrap().cmp(&Hand::from_str("23457", false).unwrap()), Ordering::Less)
     }
 }
