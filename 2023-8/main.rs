@@ -1,5 +1,7 @@
 use std::collections::HashMap;
-use std::io;
+use std::fmt::{Debug, Formatter};
+use std::{io};
+use std::cmp::max;
 use std::ptr::NonNull;
 use anyhow::{Result, Ok, Context, bail};
 use once_cell::sync::Lazy;
@@ -42,7 +44,7 @@ impl DesertMap {
                 None => { bail!("unknow place  {}", left_name) }
                 Some(left_place) => { (*left_place).as_ref().into() }
             });
-            let right_place = Some(match result.get(left_name) {
+            let right_place = Some(match result.get(right_name) {
                 None => { bail!("unknow place  {}", right_name) }
                 Some(right_place) => { (*right_place).as_ref().into() }
             });
@@ -60,12 +62,29 @@ impl DesertMap {
             places: result,
         })
     }
+
+    fn navigate(&self, current_place: &Place, direction: &Direction) -> Result<&Place> {
+        Ok(match direction {
+            Direction::Left => unsafe {
+                current_place.left.context("uninitialized left place")?.as_ref()
+            }
+            Direction::Right => unsafe {
+                current_place.right.context("uninitialized right place")?.as_ref()
+            }
+        })
+    }
 }
 
 struct Place {
     name: NonNull<str>,
     left: Option<NonNull<Place>>,
     right: Option<NonNull<Place>>,
+}
+
+impl Debug for Place {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(unsafe { self.name.as_ref() })
+    }
 }
 
 enum Direction {
@@ -83,25 +102,65 @@ impl Direction {
     }
 }
 
+#[derive(Debug)]
+enum CycleDetect {
+    None,
+    StartsAt(u64),
+    CycleLength(u64),
+}
 
 static RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(\w+) = \((\w+), (\w+)\)"#).unwrap());
 
+fn lcm(x: u64, y: u64) -> u64 {
+    let x_primes = factors(x);
+    let mut y_primes = factors(y);
+    let mut result: u64 = 1;
+    for (x_prime, x_count) in &x_primes {
+        let y_count = y_primes.remove(x_prime).unwrap_or(0);
+        result *= x_prime.pow(max(*x_count, y_count) as u32)
+    }
+
+    for (remaining_prime, remaining_count) in y_primes {
+        result *= remaining_prime.pow(remaining_count as u32)
+    }
+
+    result
+}
+
+fn factors(x: u64) -> HashMap<u64, u64> {
+    let mut x = x;
+    let mut result = HashMap::new();
+
+    'outer: loop {
+        for factor in 2..=((x as f64).sqrt() as u64) {
+            if x % factor == 0 {
+                x = x / factor;
+                result.insert(factor, *result.get(&factor).unwrap_or(&0) + 1);
+                continue 'outer;
+            }
+        }
+        break;
+    }
+
+    result.insert(x, *result.get(&x).unwrap_or(&0) + 1);
+
+    result
+}
+
 fn main() -> Result<()> {
+    println!("{}", 44810373917_u64 * 293_u64);
+
     Lazy::force(&RE);
 
     let puzzle = parse()?;
 
+    // part 1
     let mut current_place = puzzle.desert.places.get("AAA").context("missing starting place AAA")?.as_ref();
-    let mut steps = 0;
+    let mut steps: u64 = 0;
     for direction in puzzle.directions.iter().cycle() {
-        let go_to = match direction {
-            Direction::Left => unsafe { current_place.left.context("uninitialized left place")?.as_ref() }
-            Direction::Right => unsafe { current_place.right.context("uninitialized left place")?.as_ref() }
-        };
-        current_place = go_to;
+        current_place = puzzle.desert.navigate(current_place, &direction)?;
         steps += 1;
         if unsafe {
-            println!("{}", current_place.name.as_ref());
             current_place.name.as_ref()
         } == "ZZZ" {
             break;
@@ -109,6 +168,58 @@ fn main() -> Result<()> {
     }
 
     println!("{}", steps);
+
+    // part 2
+    let mut current_places: Vec<&Place> = puzzle.desert.places
+        .iter()
+        .filter(|(k, _)| k.ends_with("A"))
+        .map(|(_, v)| (*v).as_ref())
+        .collect();
+    let mut cycle_detects = current_places
+        .iter()
+        .map(|_| CycleDetect::None)
+        .collect::<Vec<_>>();
+    let mut steps: u64 = 0;
+    for direction in puzzle.directions.iter().cycle() {
+        current_places = current_places
+            .iter()
+            .map(|current_place| Ok(puzzle.desert.navigate(current_place, &direction)?))
+            .collect::<Result<_>>()?;
+        steps += 1;
+
+        for (i, current_place) in current_places.iter().enumerate() {
+            if unsafe { current_place.name.as_ref().ends_with("Z") } {
+                match cycle_detects[i] {
+                    CycleDetect::None => {
+                        cycle_detects[i] = CycleDetect::StartsAt(steps)
+                    }
+                    CycleDetect::StartsAt(starts_at) => {
+                        cycle_detects[i] = CycleDetect::CycleLength(steps - starts_at)
+                    }
+                    CycleDetect::CycleLength(_) => {}
+                }
+            }
+        }
+
+        if cycle_detects
+            .iter()
+            .all(|place| matches!(place, CycleDetect::CycleLength(_))) {
+            break;
+        }
+    }
+
+    let mut least_common_multiple = 1;
+    for cycle in &cycle_detects {
+        match cycle {
+            CycleDetect::CycleLength(cycle_len) => {
+                least_common_multiple = lcm(least_common_multiple, *cycle_len)
+            }
+            _ => {}
+        }
+    }
+
+    println!("{}", least_common_multiple);
+
 
     Ok(())
 }
@@ -137,4 +248,27 @@ fn parse() -> Result<Puzzle> {
         directions,
         desert: DesertMap::from_node_vec(parsed_lines)?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+    use std::collections::HashMap;
+    use crate::{factors, lcm};
+
+    #[rstest]
+    #[case(99, HashMap::from_iter([(3, 2), (11, 1)]))]
+    #[case(121, HashMap::from_iter([(11, 2)]))]
+    #[case(128, HashMap::from_iter([(2, 7)]))]
+    fn test_factors(#[case] x: u64, #[case] expected: HashMap<u64, u64>) {
+        assert_eq!(factors(x), expected)
+    }
+
+    #[rstest]
+    #[case(99, 121, 1089)]
+    #[case(4, 5, 20)]
+    #[case(128, 64, 128)]
+    fn test_lcm(#[case] x: u64, #[case] y: u64,  #[case] expected: u64) {
+        assert_eq!(lcm(x, y), expected)
+    }
 }
