@@ -19,7 +19,10 @@ struct Puzzle {
 }
 
 struct DesertMap {
-    places: HashMap<String, Box<Place>>,
+    // 'static to trick borrow checker, together with unsafe in from_node_vec constructor:
+    // all Place references returned from other methods live as long as DesertMap.
+    // The only constraint to caller is that this places field is not be accessed directly
+    places: HashMap<String, Box<Place<'static>>>,
 }
 
 impl DesertMap {
@@ -30,7 +33,7 @@ impl DesertMap {
             let name: String = (&node.name).clone();
             let name_ptr = NonNull::from(name.as_str());
             result.insert(name, Place {
-                name: name_ptr,
+                name: unsafe { name_ptr.as_ref() },
                 left: None,
                 right: None,
             }.into());
@@ -42,11 +45,11 @@ impl DesertMap {
             let right_name = node.right.as_str();
             let left_place = Some(match result.get(left_name) {
                 None => { bail!("unknow place  {}", left_name) }
-                Some(left_place) => { (*left_place).as_ref().into() }
+                Some(left_place) => { unsafe { NonNull::from((*left_place).as_ref()).as_ref() } }
             });
             let right_place = Some(match result.get(right_name) {
                 None => { bail!("unknow place  {}", right_name) }
-                Some(right_place) => { (*right_place).as_ref().into() }
+                Some(right_place) => { unsafe { NonNull::from((*right_place).as_ref()).as_ref() } }
             });
 
             match result.get_mut(name) {
@@ -63,27 +66,34 @@ impl DesertMap {
         })
     }
 
-    fn navigate(&self, current_place: &Place, direction: &Direction) -> Result<&Place> {
+    fn navigate<'a, 'b>(&'a self, current_place: &'a Place, direction: &'b Direction) -> Result<&'a Place> {
         Ok(match direction {
-            Direction::Left => unsafe {
-                current_place.left.context("uninitialized left place")?.as_ref()
-            }
-            Direction::Right => unsafe {
-                current_place.right.context("uninitialized right place")?.as_ref()
-            }
+            Direction::Left => current_place.left.context("uninitialized left place")?,
+            Direction::Right => current_place.right.context("uninitialized right place")?
         })
+    }
+
+    fn get_by_name(&self, name: &str) -> Option<&Place> {
+        Some(self.places.get(name)?.as_ref())
+    }
+
+    fn iter<'a>(&'a self) -> Box<dyn Iterator<Item=&'a Place> + 'a> {
+        Box::new(self.places
+            .values()
+            .map(|x| (*x).as_ref())
+        )
     }
 }
 
-struct Place {
-    name: NonNull<str>,
-    left: Option<NonNull<Place>>,
-    right: Option<NonNull<Place>>,
+struct Place<'a> {
+    name: &'a str,
+    left: Option<&'a Place<'a>>,
+    right: Option<&'a Place<'a>>,
 }
 
-impl Debug for Place {
+impl<'a> Debug for Place<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(unsafe { self.name.as_ref() })
+        f.write_str(self.name.as_ref() )
     }
 }
 
@@ -155,14 +165,12 @@ fn main() -> Result<()> {
     let puzzle = parse()?;
 
     // part 1
-    let mut current_place = puzzle.desert.places.get("AAA").context("missing starting place AAA")?.as_ref();
+    let mut current_place = puzzle.desert.get_by_name("AAA").context("missing starting place AAA")?;
     let mut steps: u64 = 0;
     for direction in puzzle.directions.iter().cycle() {
         current_place = puzzle.desert.navigate(current_place, &direction)?;
         steps += 1;
-        if unsafe {
-            current_place.name.as_ref()
-        } == "ZZZ" {
+        if current_place.name == "ZZZ" {
             break;
         }
     }
@@ -170,10 +178,9 @@ fn main() -> Result<()> {
     println!("{}", steps);
 
     // part 2
-    let mut current_places: Vec<&Place> = puzzle.desert.places
+    let mut current_places: Vec<&Place> = puzzle.desert
         .iter()
-        .filter(|(k, _)| k.ends_with("A"))
-        .map(|(_, v)| (*v).as_ref())
+        .filter(|place| place.name.ends_with("A"))
         .collect();
     let mut cycle_detects = current_places
         .iter()
@@ -188,7 +195,7 @@ fn main() -> Result<()> {
         steps += 1;
 
         for (i, current_place) in current_places.iter().enumerate() {
-            if unsafe { current_place.name.as_ref().ends_with("Z") } {
+            if current_place.name.ends_with("Z") {
                 match cycle_detects[i] {
                     CycleDetect::None => {
                         cycle_detects[i] = CycleDetect::StartsAt(steps)
@@ -268,7 +275,7 @@ mod tests {
     #[case(99, 121, 1089)]
     #[case(4, 5, 20)]
     #[case(128, 64, 128)]
-    fn test_lcm(#[case] x: u64, #[case] y: u64,  #[case] expected: u64) {
+    fn test_lcm(#[case] x: u64, #[case] y: u64, #[case] expected: u64) {
         assert_eq!(lcm(x, y), expected)
     }
 }
