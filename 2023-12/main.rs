@@ -1,65 +1,112 @@
+use std::cmp::min;
+use std::collections::HashMap;
 use std::io;
 use anyhow::{Result, Ok, Context, bail};
 
 struct SpringLine {
     springs: Vec<Spring>,
-    groups: Vec<u64>,
+    groups: Vec<usize>,
+}
+
+#[derive(Eq, Hash, PartialEq)]
+struct CacheKey {
+    from_spring_i: usize,
+    from_group_i: usize,
 }
 
 impl SpringLine {
     fn arrangement_count(&self) -> u64 {
-        let mut checked_springs = self.springs.clone();
-        self.arrangement_count_rec(checked_springs.as_mut_slice(), 0)
+        let mut cache = HashMap::<CacheKey, u64>::new();
+        self.arrangement_count_inner(0, 0, &mut cache)
     }
 
-    fn arrangement_count_rec(&self, checked: &mut [Spring], from_i: usize) -> u64 {
-        let mut sum = 0;
-        for spring_i in from_i..checked.len() {
-            if matches!(self.springs[spring_i], Spring::Unknown) {
-                checked[spring_i] = Spring::Operational;
-                sum += self.arrangement_count_rec(checked, spring_i + 1);
-                checked[spring_i] = Spring::Damaged;
-                sum += self.arrangement_count_rec(checked, spring_i + 1);
-                return sum;
+    fn arrangement_count_inner(&self, from_spring_i: usize, from_group_i: usize, cache: &mut HashMap<CacheKey, u64>) -> u64 {
+        if from_group_i >= self.groups.len() {
+            if from_spring_i >= self.springs.len() {
+                return 1;
             }
+            // no damaged groups left - it is a valid permutation if only unknown or operational springs remain
+            return match self.springs[from_spring_i..].iter().all(|s| !matches!(s, Spring::Damaged)) {
+                true => 1,
+                false => 0
+            };
         }
-        return match self.matches_groups(checked) {
-            true => 1,
-            false => 0
-        };
-    }
 
-    fn matches_groups(&self, checked: &[Spring]) -> bool {
-        let mut group_i = 0;
-        let mut damaged_row = 0;
-        for spring in checked.iter().chain([Spring::Operational].iter()) {
-            match spring {
-                Spring::Unknown => { unreachable!("should already be filled") }
-                Spring::Damaged => {
-                    damaged_row += 1;
-                }
-                Spring::Operational => {
-                    if damaged_row > 0 {
-                        if group_i >= self.groups.len() {
-                            return false;
-                        }
-                        if self.groups[group_i] != damaged_row {
-                            return false;
-                        }
-                        group_i += 1;
-                        damaged_row = 0;
+        if from_spring_i >= self.springs.len() {
+            return 0;
+        }
+
+        let minimum_required = self.groups.len() - from_group_i - 1 + self.groups[from_group_i..].iter().sum::<usize>();
+        if minimum_required > self.springs.len() - from_spring_i {
+            return 0;
+        }
+
+        let group_size = self.groups[from_group_i];
+
+        let limit_last_start = self.springs.len() - group_size;
+        let last_possible_start = from_spring_i + self.springs[from_spring_i..]
+            .iter()
+            .position(|s| matches!(s, Spring::Damaged))
+            .unwrap_or(limit_last_start);
+        let last_possible_start = min(limit_last_start, last_possible_start);
+
+        let mut sum: u64 = 0;
+        for start in from_spring_i..=last_possible_start {
+            // all springs in planned range have to be damaged or unknown
+            if !self.springs[start..start + group_size]
+                .iter()
+                .all(|s| !matches!(s,  Spring::Operational)) {
+                continue;
+            }
+            // and the very next must be either out of bounds, or not damaged
+            match self.springs.get(start + group_size) {
+                None => {}
+                Some(s) => {
+                    if matches!(s, Spring::Damaged) {
+                        continue;
                     }
                 }
             }
+
+            let key = CacheKey{
+                from_spring_i: start + group_size + 1,
+                from_group_i: from_group_i + 1,
+            };
+            let count_opt = cache.get(&key);
+            let count = match count_opt {
+                None => {
+                    let count = self.arrangement_count_inner(
+                        start + group_size + 1,
+                        from_group_i + 1,
+                        cache
+                    );
+                    cache.insert(key, count);
+                    count
+                }
+                Some(v) => *v
+            };
+
+            sum += count;
         }
 
-        group_i == self.groups.len()
+        sum
     }
 
-    fn unfold(&self, multiplier: u64) -> Self {
-        Self{
-            springs: self.springs.repeat(multiplier as usize),
-            groups: self.groups.repeat(multiplier as usize),
+
+    fn unfold(&self, multiplier: usize) -> Self {
+        let mut springs: Vec<Spring> = Vec::new();
+        let mut first = true;
+        for _ in 0..multiplier {
+            if first {
+                first = false;
+            } else {
+                springs.push(Spring::Unknown);
+            }
+            springs.extend(&self.springs);
+        }
+        Self {
+            springs,
+            groups: self.groups.repeat(multiplier),
         }
     }
 }
@@ -77,8 +124,9 @@ fn main() -> Result<()> {
     for line in stdin.lines() {
         let line = line?;
         let spring_line = parse_line(&line)?;
-        // let spring_line = spring_line.unfold(5);
-        sum += spring_line.arrangement_count();
+        let spring_line = spring_line.unfold(5);
+        let count = spring_line.arrangement_count();
+        sum += count;
     }
 
     println!("{}", sum);
@@ -95,7 +143,7 @@ fn parse_line(line: &str) -> Result<SpringLine> {
             '?' => Spring::Unknown,
             _ => bail!("invalid spring state")
         })).collect::<Result<_>>()?,
-        groups: groups_str.split(",").map(|s| Ok(s.parse::<u64>()?)).collect::<Result<_>>()?,
+        groups: groups_str.split(",").map(|s| Ok(s.parse::<usize>()?)).collect::<Result<_>>()?,
     })
 }
 
