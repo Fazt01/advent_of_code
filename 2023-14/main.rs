@@ -1,8 +1,9 @@
+use std::collections::HashMap;
 use std::io;
 use std::ops::{Index, IndexMut, Range};
 use anyhow::{Result, Ok, bail};
 
-#[derive(Clone)]
+#[derive(Clone, Eq, Hash, PartialEq)]
 struct Map {
     points: Vec<Point>,
     rows: usize,
@@ -108,7 +109,7 @@ fn coord(x: usize, y: usize) -> Coord {
     }
 }
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Copy, Clone, Hash, Eq)]
 enum Point {
     Empty,
     RoundRock,
@@ -128,22 +129,35 @@ static DOWN: Offset = Offset { x: 0, y: 1 };
 static RIGHT: Offset = Offset { x: 1, y: 0 };
 
 fn main() -> Result<()> {
-    // manually found the cycle length is 72, and e.g. cycle 1936 will have same result as cycle 1bil
-    // ¯\_(ツ)_/¯
-    // println!("{}", (1_000_000_000-1936)%72);
-    // return Ok(());
-
     let mut map = parse()?;
 
-    for cycle in 0..1_000_000_000 {
-        let map_prev = map.clone();
+    let mut cycle_results: HashMap<Map, u64> = HashMap::new();
+    let mut target_cycle: Option<u64> = None;
+
+    for cycle in 1..=1_000_000_000 {
         for roll_direction in [UP, LEFT, DOWN, RIGHT] {
             map.roll(roll_direction)
         }
-        if map.points == map_prev.points {
-            break;
+        match target_cycle {
+            None => {}
+            Some(target_cycle) => {
+                if cycle == target_cycle {
+                    break;
+                } else {
+                    continue;
+                }
+            }
         }
-        println!("{}: {}", cycle+1, map.rocks_load());
+        let map_clone = map.clone();
+        let old_cycle = cycle_results.insert(map_clone, cycle);
+        match old_cycle {
+            None => {}
+            Some(old_cycle) => {
+                let period = cycle-old_cycle;
+                let wait_for = (1_000_000_000-cycle)%period;
+                target_cycle = Some(cycle+wait_for);
+            }
+        }
     }
 
     println!("{}", map.rocks_load());
