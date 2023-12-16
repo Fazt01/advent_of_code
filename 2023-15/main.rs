@@ -14,7 +14,7 @@ impl LensBoxes {
         self.boxes[box_i as usize].remove_lens(label)
     }
 
-    fn focusing_power(& self) -> u64 {
+    fn focusing_power(&self) -> u64 {
         let mut sum: u64 = 0;
         for (box_i, lens_box) in self.boxes.iter().enumerate() {
             for (lens_i, lens) in lens_box.lenses.iter().enumerate() {
