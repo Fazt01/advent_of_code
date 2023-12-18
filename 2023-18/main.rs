@@ -1,57 +1,9 @@
-use std::cmp::Ordering;
-use std::collections::HashSet;
-use std::fmt::{Display, Formatter};
+use std::cmp::{max, min};
 use std::io;
-use std::ops::{Index, IndexMut, Mul, Neg};
+use std::ops::Mul;
 use anyhow::{Result, Ok, bail, Context};
 use once_cell::sync::Lazy;
 use regex::Regex;
-
-
-struct Map {
-    points: Vec<Point>,
-    rows: usize,
-    columns: usize,
-}
-
-impl Display for Map {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        for y in 0..self.rows {
-            for x in 0..self.columns {
-                write!(f, "{}", match self.index(x, y) {
-                    Point::Ground => '.',
-                    Point::Dig => '#',
-                })?;
-            }
-            writeln!(f)?;
-        }
-        Result::Ok(())
-    }
-}
-
-impl Map {
-    fn index(&self, x: usize, y: usize) -> &Point {
-        self.points.index(y * self.columns + x)
-    }
-
-    fn index_mut(&mut self, x: usize, y: usize) -> &mut Point {
-        self.points.index_mut(y * self.columns + x)
-    }
-
-    fn index_coord_mut(&mut self, coord: &Coord) -> &mut Point {
-        self.index_mut(coord.x as usize, coord.y as usize)
-    }
-
-    fn is_valid(&self, coord: &Coord) -> bool {
-        coord.x >= 0 && coord.y >= 0 && coord.x < self.columns as i64 && coord.y < self.rows as i64
-    }
-}
-
-#[derive(Debug)]
-enum Point {
-    Ground,
-    Dig,
-}
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 struct Offset {
@@ -70,23 +22,12 @@ impl Mul<i64> for Offset {
     }
 }
 
-impl Neg for Offset {
-    type Output = Offset;
-
-    fn neg(self) -> Self::Output {
-        Offset {
-            x: -self.x,
-            y: -self.y,
-        }
-    }
-}
-
 static UP: Offset = Offset { x: 0, y: -1 };
 static LEFT: Offset = Offset { x: -1, y: 0 };
 static DOWN: Offset = Offset { x: 0, y: 1 };
 static RIGHT: Offset = Offset { x: 1, y: 0 };
 
-#[derive(Copy, Clone, PartialEq, Debug, Hash, Eq)]
+#[derive(Copy, Clone, PartialEq, Debug, Hash, Eq, Default)]
 struct Coord {
     x: i64,
     y: i64,
@@ -101,134 +42,130 @@ impl Coord {
     }
 }
 
-#[derive(Copy, Clone)]
-struct Rotation {
-    x: i8,
-    y: i8,
+struct BoundingBox {
+    min_x: i64,
+    min_y: i64,
+    max_x: i64,
+    max_y: i64,
 }
 
-static ROTATE_RIGHT: Rotation = Rotation { x: -1, y: 1 };
-static ROTATE_LEFT: Rotation = Rotation { x: 1, y: -1 };
+impl BoundingBox {
+    fn on_coord(coord: &Coord) -> BoundingBox {
+        BoundingBox {
+            min_x: coord.x,
+            min_y: coord.y,
+            max_x: coord.x,
+            max_y: coord.y,
+        }
+    }
+    fn include(&self, coord: &Coord) -> BoundingBox {
+        BoundingBox {
+            min_x: min(self.min_x, coord.x),
+            min_y: min(self.min_y, coord.y),
+            max_x: max(self.max_x, coord.x),
+            max_y: max(self.max_y, coord.y),
+        }
+    }
 
+    fn is_border(&self, coord: &Coord) -> bool {
+        coord.x == self.min_x || coord.y == self.min_y || coord.x == self.max_x || coord.y == self.max_y
+    }
+
+    fn area(&self) -> i64 {
+        (self.max_x - self.min_x) * (self.max_y - self.min_y)
+    }
+}
 
 fn main() -> Result<()> {
     Lazy::force(&RE);
 
     let instructions = parse()?;
 
-    let mut min_x = 0;
-    let mut min_y = 0;
-    let mut max_x = 0;
-    let mut max_y = 0;
-    let mut current = Coord {
-        x: 0,
-        y: 0,
-    };
+    let points = instructions_to_points(&instructions);
 
-    for instruction in &instructions {
-        current = current.offset(instruction.direction * instruction.count as i64);
-        if current.x > max_x {
-            max_x = current.x
-        }
-        if current.y > max_y {
-            max_y = current.y
-        }
-        if current.x < min_x {
-            min_x = current.x
-        }
-        if current.y < min_y {
-            min_y = current.y
-        }
-    }
+    let area = area_rec(&points, 0, points.len() - 1, 1);
+    let perimeter_length = instructions
+        .iter()
+        .map(|x| x.count)
+        .sum::<i64>();
+    // adjustment for integer-grid - all areas are calculated "including top-left edges,
+    // excluding bottom-right edges" to simplify adding and subtracting.
+    // this final adjustments adds all bottom and right edges
+    // (they have to be exactly half of perimeter, as border ends at the start).
+    // +1 as single point has area of 1.
+    let area_adjust = perimeter_length / 2 + 1;
 
-    let rows = max_y - min_y + 1;
-    let columns = max_x - min_x + 1;
-
-    let mut map = Map {
-        points: (0..rows * columns).map(|_| Point::Ground).collect(),
-        rows: rows as usize,
-        columns: columns as usize,
-    };
-
-    let mut current = Coord {
-        x: -min_x,
-        y: -min_y,
-    };
-
-    let mut rightness: i64 = 0;
-    let mut previous: Option<Offset> = None;
-    let mut border = HashSet::<Coord>::new();
-
-    for instruction in &instructions {
-        for _ in 0..instruction.count {
-            *map.index_coord_mut(&current) = Point::Dig;
-            border.insert(current);
-            current = current.offset(instruction.direction);
-        }
-        if let Some(previous) = previous {
-            rightness += cross_product(previous, instruction.direction) as i64;
-        }
-
-        previous = Some(instruction.direction);
-    }
-
-    let rotate_to_inside = match rightness.cmp(&0) {
-        Ordering::Less => ROTATE_LEFT,
-        Ordering::Greater => ROTATE_RIGHT,
-        Ordering::Equal => bail!("unexpectedly straight loop"),
-    };
-
-    let mut current = Coord {
-        x: -min_x,
-        y: -min_y,
-    };
-
-    for instruction in &instructions {
-        for _ in 0..instruction.count {
-            let previous = current;
-            current = current.offset(instruction.direction);
-
-            let to_inside_offset = rotate(instruction.direction, rotate_to_inside);
-            for from_coord in [previous, current] {
-                let mut checked_coord = from_coord;
-                loop {
-                    checked_coord = checked_coord.offset(to_inside_offset);
-                    if !map.is_valid(&checked_coord) {
-                        break;
-                    }
-                    let checked_point = map.index_coord_mut(&checked_coord);
-                    if let Point::Ground = checked_point {
-                        *checked_point = Point::Dig;
-                    }
-
-                    if border.get(&checked_coord).is_some() {
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    println!("{}", map.points.iter().filter(|x| matches!(x, Point::Dig)).count());
+    println!("{}", area + area_adjust);
 
     Ok(())
 }
 
-fn cross_product(a: Offset, b: Offset) -> i8 {
-    ((a.x * b.y) - (a.y * b.x)) as i8
-}
-
-fn rotate(a: Offset, rotation: Rotation) -> Offset {
-    Offset {
-        x: a.y * rotation.x as i64,
-        y: a.x * rotation.y as i64,
+fn instructions_to_points(instructions: &Vec<Input>) -> Vec<Coord> {
+    let mut result = Vec::<Coord>::new();
+    let mut current = Coord::default();
+    for instruction in instructions {
+        result.push(current);
+        current = current.offset(instruction.direction * instruction.count);
     }
+    result
 }
 
+fn area_rec(points: &Vec<Coord>, start: usize, end: usize, multiplier: i64) -> i64 {
+    let mut bounds: Option<BoundingBox> = None;
+    let mut i = start;
+    loop {
+        let point = &points[i];
+        bounds = Some(match bounds {
+            None => BoundingBox::on_coord(point),
+            Some(bounds) => bounds.include(point),
+        });
+        if i == end {
+            break;
+        }
+        i = (i + 1) % points.len();
+    }
+    let bounds = bounds.unwrap();
+    let own_area = multiplier * bounds.area();
+    let mut sub_areas_sum = 0;
+
+    let mut prev_on_border: Option<usize> = None;
+    // initialize with 1 before start, so that `prev_on_border` is properly initialized for points[start]
+    // (that is, prev_on_border.is_some() if points[start] is the first point to go off border)
+    let mut i = (start + points.len() - 1) % points.len();
+    let mut initializing = true;
+    loop {
+        let point = &points[i];
+        if bounds.is_border(point) {
+            prev_on_border = Some(i);
+        } else {
+            if let Some(prev_i) = prev_on_border {
+                // find where this line attaches back to border
+                let mut next_i = i;
+                loop {
+                    next_i = (next_i + 1) % points.len();
+                    let next_point = &points[next_i];
+                    if bounds.is_border(next_point) {
+                        let sub_area = area_rec(points, prev_i, next_i, -multiplier);
+                        sub_areas_sum += sub_area;
+                        break;
+                    }
+                }
+            }
+            prev_on_border = None;
+        }
+        if i == end && !initializing{
+            break;
+        }
+        i = (i + 1) % points.len();
+        initializing = false;
+    }
+
+    own_area + sub_areas_sum
+}
 
 struct Input {
     direction: Offset,
-    count: u8,
+    count: i64,
 }
 
 static RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\w) (\w+) \(#(\w{6})\)").unwrap());
@@ -240,18 +177,172 @@ fn parse() -> Result<Vec<Input>> {
         let line = line?;
         let captures = RE.captures(line.as_str()).context("invalid line")?;
         let (_, groups) = captures.extract::<3>();
+        let (hex_len, dir_digit) = groups[2].split_at(5);
         result.push(Input {
-            direction: match groups[0] {
-                "R" => RIGHT,
-                "D" => DOWN,
-                "L" => LEFT,
-                "U" => UP,
+            // part 1
+            // direction: match groups[0] {
+            //     "R" => RIGHT,
+            //     "D" => DOWN,
+            //     "L" => LEFT,
+            //     "U" => UP,
+            //     _ => bail!("invalid direction")
+            // },
+            // count: groups[1].parse()?,
+
+            // part 2
+            direction: match dir_digit {
+                "0" => RIGHT,
+                "1" => DOWN,
+                "2" => LEFT,
+                "3" => UP,
                 _ => bail!("invalid direction")
             },
-            count: groups[1].parse()?,
+            count: i64::from_str_radix(hex_len, 16)?,
         })
     }
 
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{area_rec, DOWN, Input, instructions_to_points, LEFT, RIGHT, UP};
+
+    // Maybe there is some edge case when start is / is not on border.
+
+    #[test]
+    fn test_l_shape_indexing() {
+        let mut input = vec![
+            Input {
+                direction: RIGHT,
+                count: 10,
+            },
+            Input {
+                direction: UP,
+                count: 10,
+            },
+            Input {
+                direction: RIGHT,
+                count: 10,
+            },
+            Input {
+                direction: DOWN,
+                count: 20,
+            },
+            Input {
+                direction: LEFT,
+                count: 20,
+            },
+            Input {
+                direction: UP,
+                count: 10,
+            },
+        ];
+        for i in 0..input.len() {
+            let points = instructions_to_points(&input);
+            let area = area_rec(&points, 0, points.len() - 1, 1);
+            assert_eq!(area, 300, "rotation {}", i); // 400 main - 100 inner indent
+
+            input.rotate_left(1);
+        }
+    }
+
+    #[test]
+    fn test_u_shape_indexing() {
+        let mut input = vec![
+            Input {
+                direction: RIGHT,
+                count: 10,
+            },
+            Input {
+                direction: UP,
+                count: 10,
+            },
+            Input {
+                direction: LEFT,
+                count: 10,
+            },
+            Input {
+                direction: UP,
+                count: 10,
+            },
+            Input {
+                direction: RIGHT,
+                count: 20,
+            },
+            Input {
+                direction: DOWN,
+                count: 30,
+            },
+            Input {
+                direction: LEFT,
+                count: 20,
+            },
+            Input {
+                direction: UP,
+                count: 10,
+            },
+        ];
+        for i in 0..input.len() {
+            let points = instructions_to_points(&input);
+            let area = area_rec(&points, 0, points.len() - 1, 1);
+            assert_eq!(area, 500, "rotation {}", i); // 600 main - 100 inner indent
+
+            input.rotate_left(1);
+        }
+    }
+
+    #[test]
+    fn test_l_in_u_shape_indexing() {
+        let mut input = vec![
+            Input {
+                direction: RIGHT,
+                count: 10,
+            },
+            Input {
+                direction: UP,
+                count: 5,
+            },
+            Input {
+                direction: LEFT,
+                count: 5,
+            },
+            Input {
+                direction: UP,
+                count: 5,
+            },
+            Input {
+                direction: LEFT,
+                count: 5,
+            },
+            Input {
+                direction: UP,
+                count: 10,
+            },
+            Input {
+                direction: RIGHT,
+                count: 20,
+            },
+            Input {
+                direction: DOWN,
+                count: 30,
+            },
+            Input {
+                direction: LEFT,
+                count: 20,
+            },
+            Input {
+                direction: UP,
+                count: 10,
+            },
+        ];
+        for i in 0..input.len() {
+            let points = instructions_to_points(&input);
+            let area = area_rec(&points, 0, points.len() - 1, 1);
+            assert_eq!(area, 525, "rotation {}", i); // 600 main - 100 inner indent + 25 inner most outdent
+
+            input.rotate_left(1);
+        }
+    }
 }
