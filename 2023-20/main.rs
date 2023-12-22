@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io;
+use std::rc::Rc;
 use anyhow::{Result, Ok, Context, bail};
 
 #[derive(Clone, Copy, Debug)]
@@ -10,7 +11,7 @@ enum Pulse {
 
 #[derive(Clone)]
 struct PulseTarget {
-    target_module: String,
+    target_module: Rc<str>,
     input_info: ModuleInputInfo,
 }
 
@@ -26,7 +27,7 @@ enum ModuleInputInfo {
 }
 
 struct Puzzle {
-    modules: HashMap<String, Module>,
+    modules: HashMap<Rc<str>, Module>,
 }
 
 struct Module {
@@ -98,7 +99,7 @@ fn main() -> Result<()> {
 
     let mut pulsed_low: i64 = 0;
     let mut pulsed_high: i64 = 0;
-    let button_output = PulseTarget { target_module: "broadcaster".to_owned(), input_info: ModuleInputInfo::None };
+    let button_output = PulseTarget { target_module: "broadcaster".into(), input_info: ModuleInputInfo::None };
     for button_press in 0i64.. {
         let mut current_to_process = vec![PulseEvent {
             pulse: Pulse::Low,
@@ -111,7 +112,7 @@ fn main() -> Result<()> {
                 match current.pulse {
                     Pulse::High => {
                         // this is NAND with 4 inputs that outputs to rx
-                        if pulse_target.target_module == "kh" {
+                        if pulse_target.target_module.as_ref() == "kh" {
                             if let ModuleInputInfo::Id(id) = pulse_target.input_info {
                                 println!("input {} high in button_press {}", id, button_press + 1);
                                 // Figure out the lcm outside of code.
@@ -121,7 +122,7 @@ fn main() -> Result<()> {
                         pulsed_high += 1;
                     }
                     Pulse::Low => {
-                        if pulse_target.target_module == "rx" { // too large, never finishes
+                        if pulse_target.target_module.as_ref() == "rx" { // too large, never finishes
                             println!("{}", button_press + 1);
                             break;
                         }
@@ -155,7 +156,7 @@ fn parse() -> Result<Puzzle> {
     let mut puzzle = Puzzle {
         modules: Default::default(),
     };
-    let mut outputs_map = HashMap::<String, Vec<String>>::new();
+    let mut outputs_map = HashMap::<Rc<str>, Vec<Box<str>>>::new();
     for line in stdin.lines() {
         let line = line?;
         let mut s = line.as_str();
@@ -172,29 +173,35 @@ fn parse() -> Result<Puzzle> {
         };
         let (name, outputs_str) = s.split_once(" -> ").context("invalid line")?;
         let outputs = outputs_str.split(", ").collect::<Vec<_>>();
-        puzzle.modules.insert(name.to_owned(), Module {
+        let name = Rc::<str>::from(name);
+        puzzle.modules.insert(name.clone(), Module {
             outputs: vec![],
             module_type,
         });
         outputs_map.insert(
-            name.to_owned(),
+            name,
             outputs
                 .into_iter()
-                .map(<str>::to_owned)
+                .map(|s| Box::<str>::from(s))
                 .collect(),
         );
     }
     for (name, outputs) in outputs_map {
         let mut module_output = Vec::<PulseTarget>::new();
         for output in outputs {
-            let output_module = puzzle.modules.get_mut(output.as_str());
+            let kv_pair = puzzle.modules.get_key_value(output.as_ref());
+            let target_module = match kv_pair {
+                None => output.into(),
+                Some((name, _)) => {name.clone()},
+            };
+            let output_module = puzzle.modules.get_mut(&target_module);
             let pulse_target = PulseTarget {
-                target_module: output,
+                target_module,
                 input_info: output_module.map_or(ModuleInputInfo::None, Module::register_input),
             };
             module_output.push(pulse_target)
         }
-        puzzle.modules.get_mut(name.as_str()).unwrap().outputs = module_output;
+        puzzle.modules.get_mut(name.as_ref()).unwrap().outputs = module_output;
     }
     Ok(puzzle)
 }
