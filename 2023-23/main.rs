@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::io;
@@ -116,179 +117,147 @@ fn main() -> Result<()> {
 
     let mut max_distance = 0;
 
-    let mut last_attempted_edge_index: Option<usize> = None;
-    let mut steps: Vec<(Coord, Option<usize>, i64)> = vec![];
-    let mut visited_crossroads: HashSet<Coord> = Default::default();
-    let mut current = puzzle.start;
-    let mut current_distance = 0;
+    let visited_crossroads: RefCell<HashSet<Coord>> = Default::default();
     let mut total_hike_count: i64 = 0;
 
-    loop {
-        let next_index =  if current == finish {
-            total_hike_count += 1;
-            if current_distance > max_distance {
-                max_distance = current_distance;
-                println!("next max: {}, currently found {} hikes", max_distance, total_hike_count);
-            }
-            None
-        } else {
-            match last_attempted_edge_index {
-                None => Some(0),
-                Some(last) => {
-                    let next = last + 1;
-                    if next >= from_crossroad.get(&current).unwrap().len() {
-                        None
-                    } else {
-                        Some(next)
-                    }
-                },
-            }
-        };
-        match next_index {
-            None => match steps.pop() {
-                None => break,
-                Some(popped) => {
-                    visited_crossroads.remove(&current);
-                    (current, last_attempted_edge_index, current_distance) = popped;
+    dfs(
+        (puzzle.start, 0),
+        |to_expand| {
+            visited_crossroads.borrow_mut().insert(to_expand.0);
+            if to_expand.0 == finish {
+                total_hike_count += 1;
+                if to_expand.1 > max_distance {
+                    max_distance = to_expand.1;
+                    println!("next max: {}, currently found {} hikes", max_distance, total_hike_count);
                 }
+                return [].into();
             }
-            Some(next_index) => {
-                last_attempted_edge_index = Some(next_index);
-                let (next_coord, distance) = from_crossroad.get(&current).unwrap()[next_index];
-                if visited_crossroads.contains(&next_coord) {
-                    continue;
-                }
-                steps.push((current, last_attempted_edge_index, current_distance));
-                visited_crossroads.insert(current);
-                last_attempted_edge_index = None;
-                current = next_coord;
-                current_distance += distance;
-            }
-        }
-    }
+            let expanded_coords = from_crossroad.get(&to_expand.0).unwrap();
+            expanded_coords
+                .iter()
+                .filter(|c| !visited_crossroads.borrow().contains(&c.0))
+                .map(|&(coord, distance)| (coord, to_expand.1 + distance))
+                .collect()
+        }, |to_revert| {
+            visited_crossroads.borrow_mut().remove(&to_revert.0);
+        },
+    );
 
     println!("{}, found {} hikes", max_distance, total_hike_count);
 
     Ok(())
 }
 
-struct Step {
-    last_attempted_dir: Option<Offset>,
-    coord: Coord,
-}
-
 fn neighboring_crossroads_distances(crossroads: &HashSet<Coord>, map: &Map, from_coord: &Coord) -> Vec<(Coord, i64)> {
-    let mut last_attempted_dir: Option<Offset> = None;
-    let mut steps: Vec<Step> = vec![];
-    let mut hike_visited: HashSet<Coord> = Default::default();
-    let mut current = *from_coord;
-    let mut result = vec![];
-    loop {
-        let next_dir= if &current != from_coord && crossroads.contains(&current) {
-            let hike_len = steps.len() as i64;
-            result.push((current, hike_len));
-            None
-        } else {
-            get_next_dir(&last_attempted_dir)
-        };
-        match next_dir {
-            None => match steps.pop() {
-                None => break,
-                Some(popped) => {
-                    hike_visited.remove(&current);
-                    last_attempted_dir = popped.last_attempted_dir;
-                    current = popped.coord;
-                }
-            }
-            Some(next_dir) => {
-                last_attempted_dir = Some(next_dir);
-                let next_coord = current.offset(next_dir);
-                if !map.is_valid(&next_coord) {
-                    continue;
-                }
-                let next_point = map.index_coord(&next_coord);
-                if let Point::Forest = next_point {
-                    continue;
-                }
-                if hike_visited.contains(&next_coord) {
-                    continue;
-                }
-                steps.push(Step {
-                    last_attempted_dir,
-                    coord: current,
-                });
-                hike_visited.insert(current);
-                last_attempted_dir = None;
-                current = next_coord;
-            }
-        }
+    #[derive(Copy, Clone)]
+    struct State {
+        coord: Coord,
+        distance: i64,
     }
+
+    let hike_visited: RefCell<HashSet<Coord>> = Default::default();
+    let mut result = vec![];
+    dfs(State {
+        coord: *from_coord,
+        distance: 0,
+    }, |to_expand| {
+        hike_visited.borrow_mut().insert(to_expand.coord);
+        if to_expand.coord != *from_coord && crossroads.contains(&to_expand.coord) {
+            result.push((to_expand.coord, to_expand.distance));
+            return [].into();
+        };
+        let point = map.index_coord(&to_expand.coord);
+        let expand_dirs = match point {
+            Point::Path | Point::Slope(_) => vec![LEFT, UP, RIGHT, DOWN],
+            Point::Forest => vec![],
+        };
+        expand_dirs
+            .iter()
+            .map(|&offset| to_expand.coord.offset(offset))
+            .filter(|c| map.is_valid(c) && !hike_visited.borrow().contains(c))
+            .map(|c| State {
+                coord: c,
+                distance: to_expand.distance + 1,
+            })
+            .collect()
+    }, |to_revert| {
+        hike_visited.borrow_mut().remove(&to_revert.coord);
+    });
+
     result
 }
 
 fn find_longest(puzzle: &Puzzle) -> i64 {
-    let mut last_attempted_dir: Option<Offset> = None;
-    let mut current = puzzle.start;
-    let mut steps: Vec<Step> = vec![];
-    let mut hike_visited: HashSet<Coord> = Default::default();
+    #[derive(Copy, Clone)]
+    struct State {
+        coord: Coord,
+        distance: i64,
+    }
+
+    let hike_visited: RefCell<HashSet<Coord>> = Default::default();
     let mut max_hike_len = 0;
-    loop {
-        if current.y == puzzle.map.rows as i64 - 1 {
-            let hike_len = steps.len() as i64;
+    dfs(State {
+        coord: puzzle.start,
+        distance: 0,
+    }, |to_expand| {
+        hike_visited.borrow_mut().insert(to_expand.coord);
+        if to_expand.coord.y == puzzle.map.rows as i64 - 1 {
+            let hike_len = to_expand.distance;
             if hike_len > max_hike_len {
                 max_hike_len = hike_len
             }
-        }
-        let next_dir = get_next_dir(&last_attempted_dir);
-        match next_dir {
-            None => match steps.pop() {
-                None => break,
-                Some(popped) => {
-                    hike_visited.remove(&current);
-                    last_attempted_dir = popped.last_attempted_dir;
-                    current = popped.coord;
-                }
-            }
-            Some(next_dir) => {
-                last_attempted_dir = Some(next_dir);
-                if let Point::Slope(slope_dir) = puzzle.map.index_coord(&current) {
-                    if slope_dir != &next_dir {
-                        continue;
-                    }
-                }
-                let next_coord = current.offset(next_dir);
-                if !puzzle.map.is_valid(&next_coord) {
-                    continue;
-                }
-                let next_point = puzzle.map.index_coord(&next_coord);
-                if let Point::Forest = next_point {
-                    continue;
-                }
-                if hike_visited.contains(&next_coord) {
-                    continue;
-                }
-                steps.push(Step {
-                    last_attempted_dir,
-                    coord: current,
-                });
-                hike_visited.insert(current);
-                last_attempted_dir = None;
-                current = next_coord;
-            }
-        }
-    }
+            return [].into();
+        };
+        let point = puzzle.map.index_coord(&to_expand.coord);
+        let expand_dirs = match point {
+            Point::Path => vec![LEFT, UP, RIGHT, DOWN],
+            Point::Forest => vec![],
+            Point::Slope(slope_dir) => vec![*slope_dir],
+        };
+        expand_dirs
+            .iter()
+            .map(|&offset| to_expand.coord.offset(offset))
+            .filter(|c| puzzle.map.is_valid(c) && !hike_visited.borrow().contains(c))
+            .map(|c| State {
+                coord: c,
+                distance: to_expand.distance + 1,
+            })
+            .collect()
+    }, |to_revert| {
+        hike_visited.borrow_mut().remove(&to_revert.coord);
+    });
+
     max_hike_len
 }
 
-fn get_next_dir(offset: &Option<Offset>) -> Option<Offset> {
-    match offset {
-        None => Some(LEFT),
-        Some(prev_direction) => match prev_direction {
-            _ if &LEFT == prev_direction => Some(UP),
-            _ if &UP == prev_direction => Some(RIGHT),
-            _ if &RIGHT == prev_direction => Some(DOWN),
-            _ if &DOWN == prev_direction => None,
-            _ => unreachable!(),
+fn dfs<TState, TExpandFn, TRevertFn>(
+    init_state: TState,
+    mut expand_fn: TExpandFn,
+    mut revert_global_state_fn: TRevertFn,
+) where
+    TState: Clone,
+    TExpandFn: FnMut(TState) -> Box<[TState]>,
+    TRevertFn: FnMut(TState)
+{
+    enum StackItem<TState> {
+        Expanded(TState),
+        Revert(TState),
+    }
+
+    let mut stack = vec![StackItem::Expanded(init_state)];
+    while let Some(popped) = stack.pop() {
+        match popped {
+            StackItem::Expanded(popped) => {
+                stack.push(StackItem::Revert(popped.clone()));
+                stack.append(&mut Vec::from(expand_fn(popped))
+                    .into_iter()
+                    .map(|x| StackItem::Expanded(x))
+                    .collect()
+                );
+            }
+            StackItem::Revert(popped) => {
+                revert_global_state_fn(popped)
+            }
         }
     }
 }
