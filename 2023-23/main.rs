@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::io;
 use std::ops::Index;
 use anyhow::{Result, Ok, bail, Context};
@@ -62,24 +62,6 @@ static LEFT: Offset = Offset { x: -1, y: 0 };
 static DOWN: Offset = Offset { x: 0, y: 1 };
 static RIGHT: Offset = Offset { x: 1, y: 0 };
 
-#[derive(Eq, PartialEq, Hash, Clone)]
-struct SubHikeKey {
-    start: Coord,
-    end: Coord,
-    visited: VisitedCrossroads,
-}
-
-#[derive(Eq, PartialEq, Clone)]
-struct VisitedCrossroads(HashSet<Coord>);
-
-impl Hash for VisitedCrossroads {
-    fn hash<H: Hasher>(&self, _: &mut H) {
-        // let mut v = self.0.iter().collect::<Vec<_>>();
-        // v.sort();
-        // v.hash(state);
-    }
-}
-
 fn main() -> Result<()> {
     let puzzle = parse()?;
 
@@ -91,8 +73,7 @@ fn main() -> Result<()> {
         x: puzzle.map.points[(puzzle.map.rows - 1) * puzzle.map.columns..puzzle.map.points.len()]
             .iter()
             .enumerate()
-            .filter(|(_, &p)| matches!(p, Point::Path))
-            .next()
+            .find(|(_, &p)| matches!(p, Point::Path))
             .context("no finish found in last row")?
             .0 as i64,
         y: puzzle.map.rows as i64 - 1,
@@ -120,84 +101,73 @@ fn main() -> Result<()> {
         }
     }
 
-    let mut sub_hikes: HashMap<SubHikeKey, i64> = Default::default();
+    let mut from_crossroad: HashMap<Coord, Vec<(Coord, i64)>> = Default::default();
 
     for coord in &crossroads {
         for (neighbor_crossroad, distance) in neighboring_crossroads_distances(&crossroads, &puzzle.map, coord) {
-            let visited = VisitedCrossroads([*coord, neighbor_crossroad].into());
-            sub_hikes.insert(
-                SubHikeKey{
-                    start: *coord,
-                    end: neighbor_crossroad,
-                    visited: visited.clone(),
-                },
-                distance,
-            );
+            from_crossroad.entry(
+                *coord,
+            ).or_default().push((neighbor_crossroad, distance));
         }
     }
 
     println!("nodes: {}", crossroads.len());
-    println!("edges: {}", sub_hikes.len());
-
-    let sub_hikes = sub_hikes;
-    let mut super_hikes: HashMap<SubHikeKey, i64> = [(SubHikeKey{
-        start: puzzle.start,
-        end: puzzle.start,
-        visited: VisitedCrossroads([puzzle.start].into()),
-    }, 0)].into();
-
-    for i in 0.. {
-        let start = std::time::Instant::now();
-
-        let mut new_super_hikes: HashMap<SubHikeKey, i64> = Default::default();
-
-        for (sub_hike1, &distance1) in &super_hikes {
-            for (sub_hike2, &distance2) in &sub_hikes {
-                if sub_hike1.visited.0.intersection(&sub_hike2.visited.0).count() != 1 {
-                    continue;
-                }
-                let (new_start, new_end) = if sub_hike1.end == sub_hike2.start {
-                    (sub_hike1.start, sub_hike2.end)
-                } else {
-                    continue
-                };
-                let new_visited = sub_hike1.visited.0
-                    .union(&sub_hike2.visited.0)
-                    .map(|&x| x)
-                    .collect::<HashSet<Coord>>();
-                let new_key = SubHikeKey{
-                    start: new_start,
-                    end: new_end,
-                    visited: VisitedCrossroads(new_visited),
-                };
-                let new_distance = distance1 + distance2;
-                new_super_hikes.entry(new_key).and_modify(|distance| {
-                    if *distance < new_distance {
-                        *distance = new_distance;
-                    }
-                }).or_insert(new_distance);
-            }
-        }
-
-        if new_super_hikes.is_empty() {
-            break;
-        }
-
-        super_hikes = new_super_hikes;
-        println!("iteration {i} done in {:?} with {} hikes", start.elapsed(), super_hikes.len());
-    }
+    println!("edges: {}", from_crossroad.len());
 
     let mut max_distance = 0;
 
-    for (subhike, &distance) in &super_hikes {
-        if subhike.visited.0.contains(&puzzle.start) && subhike.visited.0.contains(&finish) {
-            if max_distance < distance {
-                max_distance = distance
+    let mut last_attempted_edge_index: Option<usize> = None;
+    let mut steps: Vec<(Coord, Option<usize>, i64)> = vec![];
+    let mut visited_crossroads: HashSet<Coord> = Default::default();
+    let mut current = puzzle.start;
+    let mut current_distance = 0;
+    let mut total_hike_count: i64 = 0;
+
+    loop {
+        let next_index =  if current == finish {
+            total_hike_count += 1;
+            if current_distance > max_distance {
+                max_distance = current_distance;
+                println!("next max: {}, currently found {} hikes", max_distance, total_hike_count);
+            }
+            None
+        } else {
+            match last_attempted_edge_index {
+                None => Some(0),
+                Some(last) => {
+                    let next = last + 1;
+                    if next >= from_crossroad.get(&current).unwrap().len() {
+                        None
+                    } else {
+                        Some(next)
+                    }
+                },
+            }
+        };
+        match next_index {
+            None => match steps.pop() {
+                None => break,
+                Some(popped) => {
+                    visited_crossroads.remove(&current);
+                    (current, last_attempted_edge_index, current_distance) = popped;
+                }
+            }
+            Some(next_index) => {
+                last_attempted_edge_index = Some(next_index);
+                let (next_coord, distance) = from_crossroad.get(&current).unwrap()[next_index];
+                if visited_crossroads.contains(&next_coord) {
+                    continue;
+                }
+                steps.push((current, last_attempted_edge_index, current_distance));
+                visited_crossroads.insert(current);
+                last_attempted_edge_index = None;
+                current = next_coord;
+                current_distance += distance;
             }
         }
     }
 
-    println!("{}", max_distance);
+    println!("{}, found {} hikes", max_distance, total_hike_count);
 
     Ok(())
 }
@@ -214,14 +184,13 @@ fn neighboring_crossroads_distances(crossroads: &HashSet<Coord>, map: &Map, from
     let mut current = *from_coord;
     let mut result = vec![];
     loop {
-        let next_dir;
-        if &current != from_coord && crossroads.contains(&current) {
+        let next_dir= if &current != from_coord && crossroads.contains(&current) {
             let hike_len = steps.len() as i64;
             result.push((current, hike_len));
-            next_dir = None
+            None
         } else {
-            next_dir = get_next_dir(&last_attempted_dir);
-        }
+            get_next_dir(&last_attempted_dir)
+        };
         match next_dir {
             None => match steps.pop() {
                 None => break,
