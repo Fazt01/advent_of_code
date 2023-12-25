@@ -144,6 +144,7 @@ regex = "1.10.2"
 once_cell = "1.18.0"
 ringbuffer = "0.15.0"
 thiserror = "1.0.51"
+mathru = "0.15.3"
 
 [dev-dependencies]
 rstest = "0.18.2"
