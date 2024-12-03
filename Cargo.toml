@@ -142,10 +142,13 @@ path="2023-25/main.rs"
 name="2024-01"
 path="2024-01/main.rs"
 
-
 [[bin]]
 name="2024-02"
 path="2024-02/main.rs"
+
+[[bin]]
+name="2024-03"
+path="2024-03/main.rs"
 
 [dependencies]
 anyhow = "1.0.75"
