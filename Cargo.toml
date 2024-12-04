@@ -150,6 +150,10 @@ path="2024-02/main.rs"
 name="2024-03"
 path="2024-03/main.rs"
 
+[[bin]]
+name="2024-04"
+path="2024-04/main.rs"
+
 [dependencies]
 anyhow = "1.0.75"
 regex = "1.10.2"
