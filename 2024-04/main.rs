@@ -55,7 +55,7 @@ fn part2(grid: &Grid<char>) -> i32 {
                 if grid.is_valid(left_coord)
                     && grid.is_valid(right_coord)
                     && (
-                    (*grid.index_coord(left_coord) == 'M' && *grid.index_coord(right_coord) == 'S')
+                    (grid[left_coord] == 'M' && grid[right_coord] == 'S')
                     // Checking for both orientation of the cross would actually double count the crosses.
                     // By assuming arbitrary but consistent direction, only one of the two will be counted.
                     // || (*grid.index_coord(left_coord) == 'S' && *grid.index_coord(right_coord) == 'M')

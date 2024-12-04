@@ -68,6 +68,14 @@ impl<T> Grid<T> {
     }
 }
 
+impl<T> Index<Coord> for Grid<T> {
+    type Output = T;
+
+    fn index(&self, coord: Coord) -> &Self::Output {
+        self.index(coord.x as usize, coord.y as usize)
+    }
+}
+
 struct GridIterator<'a, T> {
     grid: &'a Grid<T>,
     next: Option<Coord>,
