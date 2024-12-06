@@ -9,10 +9,22 @@ pub struct Grid<T> {
 
 impl<T> Grid<T> {
     pub fn from_lines_iter<
-        ILines: IntoIterator<Item =ILine>,
+        ILines: IntoIterator<Item = ILine>,
         ILine: IntoIterator<Item = T>,
     > (
-        iter: ILines
+        iter: ILines,
+    ) -> Result<Self> {
+        Self::from_lines_iter_map::<ILines, ILine, _, T>(iter, |_, x| x)
+    }
+
+    pub fn from_lines_iter_map<
+        ILines: IntoIterator<Item = ILine>,
+        ILine: IntoIterator<Item = U>,
+        F: FnMut(Coord, U) -> T,
+        U
+    > (
+        iter: ILines,
+        mut func: F,
     ) -> Result<Self> {
         let mut result = Grid{
             points: vec![],
@@ -20,17 +32,20 @@ impl<T> Grid<T> {
             columns: 0,
         };
 
-        for line in iter {
-            let vec = Vec::<T>::from_iter(line);
+        for (y, line) in iter.into_iter().enumerate() {
+            let mut count = 0;
+            for (x, item) in line.into_iter().enumerate() {
+                result.points.push(func(Coord{ x: x as i64, y: y as i64 }, item));
+                count += 1;
+            }
             if result.columns != 0 {
-                if vec.len() != result.columns {
+                if count != result.columns {
                     bail!("inconsistent line lengths");
                 }
             } else {
-                result.columns = vec.len()
+                result.columns = count
             }
             result.rows += 1;
-            result.points.extend(vec)
         }
 
         Ok(result)

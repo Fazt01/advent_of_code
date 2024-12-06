@@ -35,9 +35,10 @@ fn part2(puzzle: &mut Puzzle, visited: &HashSet<Coord>) -> Result<i32> {
 
     for &candidate in visited {
         let added_obstacle = &mut puzzle.grid[candidate];
-        if *added_obstacle == '.' {
-            *added_obstacle = '#';
+        if candidate == puzzle.guard_start.position {
+            continue
         }
+        *added_obstacle = '#';
 
         if is_loop(&puzzle)? {
             loopy_obstacles += 1;
@@ -100,6 +101,7 @@ fn offset_to_bit(offset: Offset) -> i8 {
 }
 
 fn parse_input() -> Result<Puzzle> {
+    let mut guard_start = None;
     let grid = itertools::process_results(
         stdin().lines().map(
             |line| -> Result<_> {
@@ -109,21 +111,22 @@ fn parse_input() -> Result<Puzzle> {
             }
         ),
         |line| {
-            Grid::from_lines_iter(line)
+            Grid::from_lines_iter_map(line, |coord, c| {
+                if c == '^'{
+                    guard_start = Some(Guard{
+                        position: coord,
+                        direction: OFFSET_UP,
+                    });
+                    '.'
+                } else {
+                    c
+                }
+            })
         },
     )??;
 
-    let guard_start = grid.iter()
-        .filter(|(_, &p)| p == '^')
-        .map(|(c, _)| Guard{
-            position: c,
-            direction: OFFSET_UP,
-        })
-        .next()
-        .context("position of guard not found")?;
-
     Ok(Puzzle{
-        guard_start,
+        guard_start: guard_start.context("position of guard not found")?,
         grid,
     })
 }
