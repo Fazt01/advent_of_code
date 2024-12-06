@@ -1,10 +1,11 @@
-use std::collections::HashSet;
+use std::collections::{HashSet};
 use anyhow::{Context, Result};
 use std::io::stdin;
+use std::iter::repeat;
 use owned_chars::{OwnedCharsExt};
-use grid::{Coord, Grid, Offset, OFFSET_UP};
+use grid::{Coord, Grid, Offset, OFFSET_DOWN, OFFSET_RIGHT, OFFSET_UP, OFFSET_LEFT};
 
-#[derive(Copy, Clone, Eq, Hash, PartialEq)]
+#[derive(Copy, Clone, Eq, Hash, PartialEq, Ord, PartialOrd)]
 struct Guard {
     position: Coord,
     direction: Offset,
@@ -22,14 +23,14 @@ fn main() -> Result<()> {
 
     println!("{}", visited.len());
 
-    let loopy_obstacles = part2(&mut puzzle, &visited);
+    let loopy_obstacles = part2(&mut puzzle, &visited)?;
 
     println!("{}", loopy_obstacles);
 
     Ok(())
 }
 
-fn part2(puzzle: &mut Puzzle, visited: &HashSet<Coord>) -> i32 {
+fn part2(puzzle: &mut Puzzle, visited: &HashSet<Coord>) -> Result<i32> {
     let mut loopy_obstacles = 0;
 
     for &candidate in visited {
@@ -38,18 +39,20 @@ fn part2(puzzle: &mut Puzzle, visited: &HashSet<Coord>) -> i32 {
             *added_obstacle = '#';
         }
 
-        if is_loop(&puzzle) {
+        if is_loop(&puzzle)? {
             loopy_obstacles += 1;
         }
 
-        puzzle.grid[candidate] = '.'
+        puzzle.grid[candidate] = '.';
     }
 
-    loopy_obstacles
+
+
+    Ok(loopy_obstacles)
 }
 
-fn is_loop(puzzle: &Puzzle) -> bool {
-    let mut visited_states = HashSet::<Guard>::default();
+fn is_loop(puzzle: &Puzzle) -> Result<bool> {
+    let mut visited_states: Grid<i8> = Grid::from_lines_iter(repeat(repeat(0).take(puzzle.grid.columns())).take(puzzle.grid.rows()))?;
     let mut guard = puzzle.guard_start;
     'outer: loop {
         for (coord, point) in puzzle.grid.iter_line(guard.position, guard.direction) {
@@ -58,14 +61,14 @@ fn is_loop(puzzle: &Puzzle) -> bool {
                 guard.direction = guard.direction.rotate_right();
                 continue 'outer
             }
-            if !visited_states.insert(Guard{
-                position: coord,
-                direction: guard.direction,
-            }) {
-                return true
+            let bitmask = offset_to_bit(guard.direction);
+            let ok = (visited_states[coord] & bitmask) != 0;
+            visited_states[coord] |= bitmask;
+            if ok {
+                return Ok(true)
             };
         }
-        return false
+        return Ok(false)
     }
 }
 
@@ -84,6 +87,16 @@ fn part1(puzzle: &Puzzle) -> HashSet<Coord> {
         break;
     }
     visited
+}
+
+fn offset_to_bit(offset: Offset) -> i8 {
+    match offset {
+        OFFSET_UP => 1,
+        OFFSET_DOWN => 2,
+        OFFSET_LEFT => 4,
+        OFFSET_RIGHT => 8,
+        _ => unreachable!(),
+    }
 }
 
 fn parse_input() -> Result<Puzzle> {

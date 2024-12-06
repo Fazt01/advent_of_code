@@ -36,6 +36,14 @@ impl<T> Grid<T> {
         Ok(result)
     }
 
+    pub fn rows(&self) -> usize {
+        self.rows
+    }
+
+    pub fn columns(&self) -> usize {
+        self.rows
+    }
+
     pub fn index(&self, x: usize, y: usize) -> &T {
         self.points.index(y * self.columns + x)
     }
@@ -153,13 +161,13 @@ impl<'a, T> Iterator for GridLineIterator<'a, T> {
     }
 }
 
-#[derive(Eq, PartialEq, Debug, Copy, Clone, Hash, Default)]
+#[derive(Eq, PartialEq, Debug, Copy, Clone, Hash, Default, Ord, PartialOrd)]
 pub struct Coord {
     pub x: i64,
     pub y: i64,
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Default, Ord, PartialOrd)]
 pub struct Offset {
     pub x: i64,
     pub y: i64,
