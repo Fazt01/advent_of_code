@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use std::ops::{Add, Index};
+use std::ops::{Add, Index, IndexMut, Sub};
 
 pub struct Grid<T> {
     points: Vec<T>,
@@ -40,6 +40,10 @@ impl<T> Grid<T> {
         self.points.index(y * self.columns + x)
     }
 
+    pub fn index_mut(&mut self, x: usize, y: usize) -> &mut T {
+        self.points.index_mut(y * self.columns + x)
+    }
+
     pub fn index_coord(&self, coord: Coord) -> &T {
         self.index(coord.x as usize, coord.y as usize)
     }
@@ -73,6 +77,12 @@ impl<T> Index<Coord> for Grid<T> {
 
     fn index(&self, coord: Coord) -> &Self::Output {
         self.index(coord.x as usize, coord.y as usize)
+    }
+}
+
+impl<T> IndexMut<Coord> for Grid<T> {
+    fn index_mut(&mut self, coord: Coord) -> &mut Self::Output {
+        self.index_mut(coord.x as usize, coord.y as usize)
     }
 }
 
@@ -117,6 +127,17 @@ impl Add<Offset> for Coord {
     }
 }
 
+impl Sub<Offset> for Coord {
+    type Output = Coord;
+
+    fn sub(self, rhs: Offset) -> Self::Output {
+        Coord {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+        }
+    }
+}
+
 impl<'a, T> Iterator for GridLineIterator<'a, T> {
     type Item = (Coord, &'a T);
 
@@ -134,14 +155,14 @@ impl<'a, T> Iterator for GridLineIterator<'a, T> {
 
 #[derive(Eq, PartialEq, Debug, Copy, Clone, Hash, Default)]
 pub struct Coord {
-    x: i64,
-    y: i64,
+    pub x: i64,
+    pub y: i64,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Default)]
 pub struct Offset {
-    x: i64,
-    y: i64,
+    pub x: i64,
+    pub y: i64,
 }
 
 impl Offset {
@@ -171,6 +192,12 @@ impl Add for Offset {
         }
     }
 }
+
+pub const OFFSET_RIGHT: Offset = Offset{ x: 1, y: 0 };
+pub const OFFSET_DOWN: Offset = Offset{ x: 0, y: 1 };
+pub const OFFSET_LEFT: Offset = Offset{ x: -1, y: 0 };
+pub const OFFSET_UP: Offset = Offset{ x: 0, y: -1 };
+
 
 pub const DIRECTIONS_8: [Offset; 8] = [
     Offset{x: 1, y: 0},
