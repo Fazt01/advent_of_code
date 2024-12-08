@@ -1,5 +1,6 @@
+use std::iter;
 use anyhow::{bail, Result};
-use std::ops::{Add, Index, IndexMut, Sub};
+use std::ops::{Add, Index, IndexMut, Neg, Sub};
 
 pub struct Grid<T> {
     points: Vec<T>,
@@ -51,6 +52,15 @@ impl<T> Grid<T> {
         Ok(result)
     }
 
+    pub fn new_sized_as<U>(src: &Grid<U>) -> Grid<T>
+    where T: Default + Clone {
+        Grid::<T>{
+            points: iter::repeat(T::default()).take(src.columns * src.rows).collect(),
+            rows: src.rows,
+            columns: src.columns,
+        }
+    }
+
     pub fn rows(&self) -> usize {
         self.rows
     }
@@ -73,6 +83,22 @@ impl<T> Grid<T> {
 
     pub fn is_valid(&self, coord: Coord) -> bool {
         coord.x >= 0 && coord.y >= 0 && coord.x < self.columns as i64 && coord.y < self.rows as i64
+    }
+
+    pub fn get(&self,  coord: Coord) -> Option<&T> {
+        if self.is_valid(coord) {
+            Some(self.index(coord.x as usize, coord.y as usize))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_mut(&mut self, coord: Coord) -> Option<&mut T> {
+        if self.is_valid(coord) {
+            Some(self.index_mut(coord.x as usize, coord.y as usize))
+        } else {
+            None
+        }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (Coord, &T)> {
@@ -161,6 +187,17 @@ impl Sub<Offset> for Coord {
     }
 }
 
+impl Sub for Coord {
+    type Output = Offset;
+
+    fn sub(self, rhs: Coord) -> Self::Output {
+        Offset {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+        }
+    }
+}
+
 impl<'a, T> Iterator for GridLineIterator<'a, T> {
     type Item = (Coord, &'a T);
 
@@ -212,6 +249,17 @@ impl Add for Offset {
         Offset {
             x: self.x + rhs.x,
             y: self.y + rhs.y,
+        }
+    }
+}
+
+impl Neg for Offset {
+    type Output = Offset;
+
+    fn neg(self) -> Self::Output {
+        Offset {
+            x: -self.x,
+            y: -self.y,
         }
     }
 }
