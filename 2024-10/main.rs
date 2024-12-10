@@ -1,6 +1,6 @@
-use std::collections::HashSet;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use grid::{Coord, Grid, DIRECTIONS_CARDINAL};
+use std::collections::HashSet;
 use std::io::stdin;
 
 fn main() -> Result<()> {
@@ -51,18 +51,21 @@ fn count_trail_ends_from(grid: &Grid<u8>, coord: Coord, start_height: u8) -> Has
 }
 
 fn parse_input() -> Result<Grid<u8>> {
-    let grid = itertools::process_results(
+    let grid = Grid::from_lines_try_iter(
         stdin().lines().map(
             |line| -> Result<_> {
                 Ok(line.map(|line| {
-                    line.into_bytes().into_iter().map(|c| c - b'0')
+                    line.into_bytes().into_iter().map(|c| {
+                        if c.is_ascii_digit() {
+                            Ok(c - b'0')
+                        } else {
+                            bail!("non digit character")
+                        }
+                    })
                 })?)
             }
-        ),
-        |line| {
-            Grid::from_lines_iter(line)
-        },
-    )??;
+        )
+    )?;
 
     Ok(grid)
 }

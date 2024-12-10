@@ -1,6 +1,7 @@
+use std::convert::Infallible;
 use std::iter;
-use anyhow::{bail, Result};
 use std::ops::{Add, Index, IndexMut, Neg, Sub};
+use thiserror::Error;
 
 pub struct Grid<T> {
     points: Vec<T>,
@@ -8,25 +9,70 @@ pub struct Grid<T> {
     columns: usize,
 }
 
+#[derive(Error, Debug)]
+pub enum FromLinesTryIterMapError<E1, E2> {
+    #[error("iterating line {1}: {0}")]
+    LinesIteration(E1, usize),
+    #[error("iterating line {1} item {2}: {0}")]
+    LineIteration(E2, usize, usize),
+    #[error("inconsistent line {0} length")]
+    InconsistentLineLengths(usize),
+}
+
+type FromLinesIter = FromLinesTryIterMapError<Infallible, Infallible>;
+type FromLinesTryIter<E1, E2> = FromLinesTryIterMapError<E1, E2>;
+
 impl<T> Grid<T> {
     pub fn from_lines_iter<
         ILines: IntoIterator<Item = ILine>,
         ILine: IntoIterator<Item = T>,
     > (
         iter: ILines,
-    ) -> Result<Self> {
-        Self::from_lines_iter_map::<ILines, ILine, _, T>(iter, |_, x| x)
+    ) -> Result<Self, FromLinesIter> {
+        Self::from_lines_iter_map(iter, |_, x| x)
     }
 
     pub fn from_lines_iter_map<
         ILines: IntoIterator<Item = ILine>,
         ILine: IntoIterator<Item = U>,
         F: FnMut(Coord, U) -> T,
-        U
+        U,
     > (
         iter: ILines,
         mut func: F,
-    ) -> Result<Self> {
+    ) -> Result<Self, FromLinesIter> {
+        Self::from_lines_try_iter_map(
+            iter
+                .into_iter()
+                .map(|line| -> Result<_, Infallible> {
+                    Ok(line.into_iter())
+                }),
+            |coord, item| -> Result<T, Infallible> {Ok(func(coord, item))}
+        )
+    }
+
+    pub fn from_lines_try_iter<
+        ILines: IntoIterator<Item = Result<ILine, E1>>,
+        ILine: IntoIterator<Item = Result<T, E2>>,
+        E1,
+        E2,
+    > (
+        iter: ILines
+    ) -> Result<Self, FromLinesTryIter<E1, E2>> {
+        Self::from_lines_try_iter_map(iter, |_, x| x)
+    }
+
+    pub fn from_lines_try_iter_map<
+        ILines: IntoIterator<Item = Result<ILine, E1>>,
+        ILine: IntoIterator<Item = U>,
+        F: FnMut(Coord, U) -> Result<T, E2>,
+        U,
+        E1,
+        E2,
+    > (
+        iter: ILines,
+        mut func: F,
+    ) -> Result<Self, FromLinesTryIterMapError<E1, E2>> {
         let mut result = Grid{
             points: vec![],
             rows: 0,
@@ -34,14 +80,22 @@ impl<T> Grid<T> {
         };
 
         for (y, line) in iter.into_iter().enumerate() {
+            let line = line.map_err(|err|
+                FromLinesTryIterMapError::LinesIteration(err, y)
+            )?;
             let mut count = 0;
             for (x, item) in line.into_iter().enumerate() {
-                result.points.push(func(Coord{ x: x as i64, y: y as i64 }, item));
+                let f_result = func(Coord{ x: x as i64, y: y as i64 }, item);
+                result.points.push(f_result
+                    .map_err(|err|
+                        FromLinesTryIterMapError::LineIteration(err, y, x)
+                    )?
+                );
                 count += 1;
             }
             if result.columns != 0 {
                 if count != result.columns {
-                    bail!("inconsistent line lengths");
+                    return Err(FromLinesTryIterMapError::InconsistentLineLengths(y));
                 }
             } else {
                 result.columns = count
