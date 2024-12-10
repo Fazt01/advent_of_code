@@ -288,6 +288,13 @@ pub const DIRECTIONS_X: [Offset; 4] = [
     Offset{x: 1, y: -1},
 ];
 
+pub const DIRECTIONS_CARDINAL: [Offset; 4] = [
+    Offset{x: 1, y: 0},
+    Offset{x: 0, y: 1},
+    Offset{x: -1, y: 0},
+    Offset{x: 0, y: -1},
+];
+
 // simplified  2d matrix, only for 90 degrees rotation
 #[derive(Copy, Clone)]
 struct Rotation {
