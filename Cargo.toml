@@ -182,6 +182,10 @@ path="2024-10/main.rs"
 name="2024-11"
 path="2024-11/main.rs"
 
+[[bin]]
+name="2024-12"
+path="2024-12/main.rs"
+
 [lib]
 name = "grid"
 path = "lib/grid.rs"
