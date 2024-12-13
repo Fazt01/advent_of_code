@@ -55,29 +55,17 @@ fn win_combinations(machine: &Machine) -> Vec<WinCombination> {
     // new.y = (p.x - (a.x / a.y) * p.y) / (b.x - b.y * (a.x / a.y))
 
     // new.x = (p.x - new.y * b.x) / a.x
-    // but that doesn't work for large numbers :(
 
-    // let a_x_div_y = machine.button_a.x as f64
-    //     / machine.button_a.y as f64;
-    // let new_y = (machine.prize.x as f64 - a_x_div_y * machine.prize.y as f64)
-    //     / (machine.button_b.x as f64 - machine.button_b.y as f64 * a_x_div_y);
-    // let new_x = (machine.prize.x as f64 - new_y * machine.button_b.x as f64)
-    //     / machine.button_a.x as f64;
+    let a_x_div_y = machine.button_a.x as f64
+        / machine.button_a.y as f64;
+    let new_y = (machine.prize.x as f64 - a_x_div_y * machine.prize.y as f64)
+        / (machine.button_b.x as f64 - machine.button_b.y as f64 * a_x_div_y);
+    let new_x = (machine.prize.x as f64 - new_y * machine.button_b.x as f64)
+        / machine.button_a.x as f64;
 
-    let det_inv = (machine.button_a.x * machine.button_b.y) - (machine.button_a.y * machine.button_b.x);
-    let det = 1_f64 / det_inv as f64;
-
-    let new_x2 = det * (machine.prize.x as f64 * machine.button_b.y as f64 - machine.prize.y as f64 * machine.button_b.x as f64);
-    let new_y2 = det * (machine.prize.x as f64 * -machine.button_a.y as f64 + machine.prize.y as f64 * machine.button_a.x as f64);
-
-    // println!("{} {} {} {}", new_x, new_y, new_x2, new_y2);
-
-    let (round_x, round_y) = (new_x2.round(), new_y2.round());
-    let recheck_x = round_x as i64 * machine.button_a.x + round_y as i64 * machine.button_b.x;
-    let recheck_y = round_x as i64 * machine.button_a.y + round_y as i64 * machine.button_b.y;
-    let hit = machine.prize.x == recheck_x
-        && machine.prize.y == recheck_y;
-    // println!("{hit} {} {} {:?} {} {}", new_x, new_y, machine, recheck_x - machine.prize.x, recheck_y - machine.prize.y);
+    let (round_x, round_y) = (new_x.round(), new_y.round());
+    let hit = machine.prize.x == round_x as i64 * machine.button_a.x + round_y as i64 * machine.button_b.x
+        && machine.prize.y == round_x as i64 * machine.button_a.y + round_y as i64 * machine.button_b.y;
     if hit {
         vec![WinCombination {
             button_a: round_x as i64,
