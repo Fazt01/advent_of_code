@@ -173,6 +173,27 @@ impl<T> Grid<T> {
             direction,
         }
     }
+
+    pub fn swap(&mut self, a: Coord, b: Coord) {
+        let a = self.coord_to_index(a);
+        let b = self.coord_to_index(b);
+        self.points.swap(a, b)
+    }
+
+    fn coord_to_index(&self, coord: Coord) -> usize {
+        coord.y as usize * self.columns + coord.x as usize
+    }
+}
+
+impl<T: Default + Clone> Grid<T>{
+    pub fn new(columns: usize, rows: usize) -> Grid<T>
+    {
+        Grid::<T>{
+            points: iter::repeat(T::default()).take(columns * rows).collect(),
+            rows,
+            columns,
+        }
+    }
 }
 
 impl<T> Index<Coord> for Grid<T> {
