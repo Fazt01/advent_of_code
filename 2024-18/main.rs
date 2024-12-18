@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use grid::{Coord, Grid, DIRECTIONS_CARDINAL};
-use std::collections::HashMap;
+use std::cmp::{Ordering, Reverse};
+use std::collections::BinaryHeap;
 use std::io::stdin;
 
 type Tile = Option<u64>;
@@ -29,50 +30,62 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn shortest_path_to_end(grid: &Grid<Tile>, time: u64) -> Option<u64> {
-    let mut unvisited: HashMap<Coord, u64> = Default::default();
+#[derive(Eq, PartialEq)]
+struct PathTo {
+    position: Coord,
+    cost: u64
+}
 
-    for (coord, _) in grid.iter() {
-        unvisited.insert(coord, u64::MAX);
+impl PartialOrd<Self> for PathTo {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
+}
 
-    unvisited.insert(Coord { x: 0, y: 0 }, 0);
+impl Ord for PathTo {
+    fn cmp(&self, other: &Self) -> Ordering {
+        Reverse(self.cost).cmp(&Reverse(other.cost)).then(self.position.cmp(&other.position))
+    }
+}
+
+fn shortest_path_to_end(grid: &Grid<Tile>, time: u64) -> Option<u64> {
+    let mut positions_cost = Grid::<u64>::new_with_values(grid.columns(), grid.rows(), u64::MAX);
+    let mut unvisited: BinaryHeap<PathTo> = Default::default();
+
+    let start_path = PathTo{
+        position: Coord { x: 0, y: 0 },
+        cost: 0
+    };
+    positions_cost[start_path.position] = start_path.cost;
+    unvisited.push(start_path);
+
     let end = Coord {
         x: grid.columns() as i64 - 1,
         y: grid.rows() as i64 - 1,
     };
 
     let mut cost_to_end = None;
-    while !unvisited.is_empty() {
-        let mut min_coord = Coord::default();
-        let mut min = u64::MAX;
-        for (&coord, &cost) in &unvisited {
-            if cost < min {
-                min = cost;
-                min_coord = coord;
-            }
-        }
-
-        if unvisited.remove(&min_coord).is_none() {
-            return None;
-        };
-        if matches!(grid[min_coord], Some(wall_at_time) if wall_at_time <= time) {
+    while let Some(PathTo{position, cost}) = unvisited.pop() {
+        if positions_cost[position] < cost {
             continue;
         }
-        if min_coord == end {
-            cost_to_end = Some(min);
+        if matches!(grid[position], Some(wall_at_time) if wall_at_time <= time) {
+            continue;
+        }
+        if position == end {
+            cost_to_end = Some(cost);
             break;
         }
 
         for offset in DIRECTIONS_CARDINAL {
-            let next_coord = min_coord + offset;
+            let next_coord = position + offset;
             if grid.is_valid(next_coord) {
-                let new_cost = min + 1;
-                unvisited.get_mut(&next_coord).map(|cost_so_far| {
-                    if new_cost < *cost_so_far {
-                        *cost_so_far = new_cost;
-                    }
-                });
+                let new_cost = cost + 1;
+                let cost_ref = &mut positions_cost[next_coord];
+                if new_cost < *cost_ref {
+                    *cost_ref = new_cost;
+                    unvisited.push(PathTo{position: next_coord, cost: new_cost})
+                }
             }
         }
     }

@@ -188,8 +188,15 @@ impl<T> Grid<T> {
 impl<T: Default + Clone> Grid<T>{
     pub fn new(columns: usize, rows: usize) -> Grid<T>
     {
+        Self::new_with_values(columns, rows, T::default())
+    }
+}
+
+impl<T: Clone> Grid<T>{
+    pub fn new_with_values(columns: usize, rows: usize, value: T) -> Grid<T>
+    {
         Grid::<T>{
-            points: iter::repeat(T::default()).take(columns * rows).collect(),
+            points: iter::repeat(value).take(columns * rows).collect(),
             rows,
             columns,
         }
