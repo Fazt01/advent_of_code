@@ -1,9 +1,8 @@
 use anyhow::Result;
 use grid::{Coord, Grid, Offset, OFFSET_DOWN, OFFSET_LEFT, OFFSET_RIGHT, OFFSET_UP};
-use itertools::{repeat_n, Itertools};
+use itertools::Itertools;
 use std::collections::HashMap;
 use std::io::stdin;
-use std::rc::Rc;
 
 type Code = Vec<u8>;
 
@@ -27,7 +26,7 @@ impl From<Grid<u8>> for Keyboard {
     }
 }
 
-const KEYBOARD_COUNT: usize = 3;
+const KEYBOARD_COUNT: u64 = 26;
 
 fn main() -> Result<()> {
     let input = parse_input()?;
@@ -40,129 +39,92 @@ fn main() -> Result<()> {
     .into();
     let intermediate_keypad: Keyboard =
         Grid::from_lines_iter(vec![".^A", "<v>"].iter().map(|x| x.bytes().clone()))?.into();
-    let keyboards = vec![&final_keypad]
-        .into_iter()
-        .chain(repeat_n(&intermediate_keypad, KEYBOARD_COUNT))
-        .collect_vec();
+
+    let mut cache: HashMap<Code, HashMap<u64, u64>> = Default::default();
 
     let mut sum = 0;
     for code in &input {
-        let state = State {
-            keyboards: vec![Some(KeyboardState {
-                to_input: Rc::from(code.clone()),
-                starting: final_keypad.coords[&b'A'],
-            })]
-            .into_iter()
-            .chain(repeat_n(None, KEYBOARD_COUNT))
-            .collect_vec(),
-            output_start: 0,
-        };
-
-        let mut output: Vec<u8> = vec![];
-        let mut states = vec![state];
-        let mut shortest: Option<Vec<u8>> = None;
-        while let Some(state) = states.pop() {
-            let new_states = expand_state(&state, &mut output, &keyboards);
-            // println!("{state:?}");
-            if new_states.is_empty() {
-                shortest = Some(match shortest {
-                    None => output.clone(),
-                    Some(previous_shortest) => {
-                        if previous_shortest.len() > output.len() {
-                            output.clone()
-                        } else {
-                            previous_shortest
-                        }
+        let mut start_coord = final_keypad.coords[&b'A'];
+        let mut len = 0;
+        for &symbol in code {
+            let dest_coord = final_keypad.coords[&symbol];
+            let offset = dest_coord - start_coord;
+            let paths = get_paths(offset);
+            let mut candidate_codes = vec![];
+            'paths: for path in &paths {
+                let mut gap_test_coord = start_coord;
+                for &offset in path {
+                    gap_test_coord = gap_test_coord + offset;
+                    if final_keypad.grid[gap_test_coord] == b'.' {
+                        continue 'paths;
                     }
-                });
+                }
+                candidate_codes.push(symbols_with_activate(path))
             }
-            states.extend(new_states);
+            start_coord = start_coord + offset;
+            len += candidate_codes
+                .iter()
+                .map(|code| get_code_price(code, KEYBOARD_COUNT, &intermediate_keypad, &mut cache))
+                .min()
+                .unwrap()
         }
-        let complexity = complexity(code, shortest.as_ref().unwrap())?;
+
+        let complexity = complexity(code, len)?;
         sum += complexity;
-        println!("{complexity} {}", shortest.as_ref().unwrap().len());
-        println!(
-            "{}: {}",
-            String::from_utf8(code.clone())?,
-            String::from_utf8(shortest.unwrap())?
-        );
+        println!("{complexity} {}", len);
+        println!("{}", String::from_utf8(code.clone())?,);
     }
     println!("{sum}");
 
     Ok(())
 }
 
-#[derive(Debug, Clone)]
-struct KeyboardState {
-    to_input: Rc<[u8]>,
-    starting: Coord,
-}
-
-#[derive(Debug, Clone)]
-struct State {
-    keyboards: Vec<Option<KeyboardState>>,
-    output_start: usize,
-}
-
-fn expand_state(state: &State, output: &mut Vec<u8>, keyboards: &[&Keyboard]) -> Vec<State> {
-    for (i, keyboard_state) in state.keyboards.iter().enumerate() {
-        if keyboard_state.is_none() {
-            if i == 0 {
-                return vec![];
-            }
-            let mut res = vec![];
-            let prev_keyboard_dest = state.keyboards[i - 1].as_ref().unwrap().to_input.first();
-            if let Some(prev_keyboard_dest) = prev_keyboard_dest {
-                let dest_coord = keyboards[i - 1].coords[prev_keyboard_dest];
-                let src_coord = state.keyboards[i - 1].as_ref().unwrap().starting;
-                let offset = dest_coord - src_coord;
-                let paths = get_paths(offset);
-                'paths: for path in &paths {
-                    let mut gap_test_coord = src_coord;
-                    for &offset in path {
-                        gap_test_coord = gap_test_coord + offset;
-                        if keyboards[i - 1].grid[gap_test_coord] == b'.' {
-                            continue 'paths;
-                        }
-                    }
-                    let next_input = symbols_with_activate(path);
-                    let mut next_state = state.clone();
-                    next_state.keyboards[i] = Some(KeyboardState {
-                        to_input: Rc::from(next_input),
-                        starting: keyboards[i].coords[&b'A'],
-                    });
-                    let prev_keyboard = next_state.keyboards[i - 1].as_mut().unwrap();
-                    prev_keyboard.to_input = prev_keyboard.to_input[1..].into();
-                    prev_keyboard.starting = dest_coord;
-                    res.push(next_state);
-                }
-                return res;
-            }
-            let mut next_state = state.clone();
-            if i - 1 == 0 {
-                return vec![];
-            }
-            next_state.keyboards[i - 1] = None;
-            return vec![next_state];
+fn get_code_price(
+    code: &Vec<u8>,
+    level: u64,
+    keyboard: &Keyboard,
+    mut cache: &mut HashMap<Code, HashMap<u64, u64>>,
+) -> u64 {
+    if let Some(cached) = cache.get(code) {
+        if let Some(&cached_level) = cached.get(&level) {
+            return cached_level;
         }
     }
 
-    let manual_input = state
-        .keyboards
-        .last()
-        .unwrap()
-        .as_ref()
-        .unwrap()
-        .to_input
-        .as_ref();
-    output.truncate(state.output_start);
-    output.extend(manual_input.iter());
-    let mut next_state = state.clone();
-    *next_state.keyboards.last_mut().unwrap() = None;
-    next_state.output_start += manual_input.len();
+    let mut len: u64 = 0;
+    if level == 1 {
+        len = code.len() as u64;
+    } else {
+        let mut start_coord = keyboard.coords[&b'A'];
+        for &symbol in code {
+            let dest_coord = keyboard.coords[&symbol];
+            let offset = dest_coord - start_coord;
+            let paths = get_paths(offset);
+            let mut candidate_codes = vec![];
+            'paths: for path in &paths {
+                let mut gap_test_coord = start_coord;
+                for &offset in path {
+                    gap_test_coord = gap_test_coord + offset;
+                    if keyboard.grid[gap_test_coord] == b'.' {
+                        continue 'paths;
+                    }
+                }
+                candidate_codes.push(symbols_with_activate(path))
+            }
+            start_coord = start_coord + offset;
+            len += candidate_codes
+                .iter()
+                .map(|code| get_code_price(code, level - 1, &keyboard, &mut cache))
+                .min()
+                .unwrap()
+        }
+    }
 
-    vec![next_state]
+    cache.entry(code.clone()).or_default().insert(level, len);
+
+    len
 }
+
 fn get_paths(offset: Offset) -> Vec<Vec<Offset>> {
     let mut horizontal = Vec::new();
     let mut vertical = Vec::new();
@@ -205,8 +167,8 @@ fn offset_to_symbol(offset: Offset) -> u8 {
     }
 }
 
-fn complexity(code: &Code, shortest: &Code) -> Result<u64> {
-    Ok(shortest.len() as u64
+fn complexity(code: &Code, code_len: u64) -> Result<u64> {
+    Ok(code_len
         * String::from_utf8(
             code.iter()
                 .filter(|b| b.is_ascii_digit())
