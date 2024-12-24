@@ -16,6 +16,7 @@ struct Connection {
     operator: Operator,
 }
 
+#[derive(Debug)]
 enum Operator {
     And,
     Or,
@@ -25,6 +26,7 @@ enum Operator {
 fn main() -> Result<()> {
     let input = parse_input()?;
 
+    // part 1
     let mut values: HashMap<&str, Option<bool>> = Default::default();
     for (node, &value) in &input.inputs {
         values.insert(node, Some(value));
@@ -48,6 +50,14 @@ fn main() -> Result<()> {
     let result = to_decimal(result_bits.iter().map(|x| x.1).collect_vec());
 
     println!("{result}");
+
+    // part 2 - manually inspect the long chain of slow binary adder in graphviz (:
+
+    for (node, connection) in &input.connections {
+        println!("{node} [label=\"{node} {:?}\"{}]", connection.operator, if node.starts_with("z") {" color=\"red\""} else {""});
+        println!("{} -> {node}", connection.a);
+        println!("{} -> {node}", connection.b);
+    }
 
     Ok(())
 }
