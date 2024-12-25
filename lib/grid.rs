@@ -120,7 +120,7 @@ impl<T> Grid<T> {
     }
 
     pub fn columns(&self) -> usize {
-        self.rows
+        self.columns
     }
 
     pub fn index(&self, x: usize, y: usize) -> &T {
