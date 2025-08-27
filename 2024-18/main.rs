@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use grid::{Coord, Grid, DIRECTIONS_CARDINAL};
+use lib::grid::{Coord, Grid, DIRECTIONS_CARDINAL};
 use std::cmp::{Ordering, Reverse};
 use std::collections::BinaryHeap;
 use std::io::stdin;

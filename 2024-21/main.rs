@@ -1,5 +1,5 @@
 use anyhow::Result;
-use grid::{Coord, Grid, Offset, OFFSET_DOWN, OFFSET_LEFT, OFFSET_RIGHT, OFFSET_UP};
+use lib::grid::{Coord, Grid, Offset, OFFSET_DOWN, OFFSET_LEFT, OFFSET_RIGHT, OFFSET_UP};
 use itertools::Itertools;
 use std::collections::HashMap;
 use std::io::stdin;

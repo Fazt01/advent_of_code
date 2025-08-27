@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use grid::{Coord, Grid, DIRECTIONS_CARDINAL};
+use lib::grid::{Coord, Grid, DIRECTIONS_CARDINAL};
 use std::collections::HashSet;
 use std::io::stdin;
 

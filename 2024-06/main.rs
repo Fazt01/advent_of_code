@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 use std::io::stdin;
 use std::iter::repeat;
 use owned_chars::{OwnedCharsExt};
-use grid::{Coord, Grid, Offset, OFFSET_DOWN, OFFSET_RIGHT, OFFSET_UP, OFFSET_LEFT};
+use lib::grid::{Coord, Grid, Offset, OFFSET_DOWN, OFFSET_RIGHT, OFFSET_UP, OFFSET_LEFT};
 
 #[derive(Copy, Clone, Eq, Hash, PartialEq, Ord, PartialOrd)]
 struct Guard {

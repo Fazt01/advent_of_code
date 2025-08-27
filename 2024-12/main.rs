@@ -1,5 +1,5 @@
 use anyhow::Result;
-use grid::{Coord, Grid, DIRECTIONS_CARDINAL, OFFSET_DOWN, OFFSET_LEFT, OFFSET_RIGHT, OFFSET_UP};
+use lib::grid::{Coord, Grid, DIRECTIONS_CARDINAL, OFFSET_DOWN, OFFSET_LEFT, OFFSET_RIGHT, OFFSET_UP};
 use owned_chars::OwnedCharsExt;
 use std::collections::{HashMap, HashSet};
 use std::io::stdin;

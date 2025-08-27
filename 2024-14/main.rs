@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use crossterm::cursor::MoveTo;
 use crossterm::{terminal::{EnterAlternateScreen}, ExecutableCommand};
-use grid::{Coord, Offset};
+use lib::grid::{Coord, Offset};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::io::{stdin, stdout, Write};

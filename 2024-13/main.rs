@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use grid::Coord;
+use lib::grid::Coord;
 use itertools::Itertools;
 use once_cell::sync::Lazy;
 use regex::Regex;

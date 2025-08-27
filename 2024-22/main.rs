@@ -1,5 +1,5 @@
 use anyhow::Result;
-use grid::{Coord, Grid};
+use lib::grid::{Coord, Grid};
 use itertools::Itertools;
 use std::collections::HashMap;
 use std::io::stdin;

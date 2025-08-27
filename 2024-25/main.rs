@@ -1,5 +1,5 @@
 use anyhow::{Result, Ok};
-use grid::{Coord, Grid, OFFSET_RIGHT, OFFSET_UP};
+use lib::grid::{Coord, Grid, OFFSET_RIGHT, OFFSET_UP};
 use itertools::Itertools;
 use owned_chars::OwnedCharsExt;
 use std::io::stdin;

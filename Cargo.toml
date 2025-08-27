@@ -43,6 +43,11 @@ path="2022-11/main.rs"
 
 
 [[bin]]
+name="2022-13"
+path="2022-13/main.rs"
+
+
+[[bin]]
 name="2023-1"
 path="2023-1/main.rs"
 
@@ -243,8 +248,8 @@ name="2024-25"
 path="2024-25/main.rs"
 
 [lib]
-name = "grid"
-path = "lib/grid.rs"
+name = "lib"
+path = "lib/lib.rs"
 
 [dependencies]
 anyhow = "1.0.75"

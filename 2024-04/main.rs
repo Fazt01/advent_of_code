@@ -1,7 +1,7 @@
 use anyhow::{Result};
 use std::io::stdin;
 use owned_chars::{OwnedCharsExt};
-use grid::{Grid, DIRECTIONS_8, DIRECTIONS_X};
+use lib::grid::{Grid, DIRECTIONS_8, DIRECTIONS_X};
 
 fn main() -> Result<()> {
     let grid = parse_input()?;
