@@ -41,10 +41,13 @@ path="2022-10/main.rs"
 name="2022-11"
 path="2022-11/main.rs"
 
-
 [[bin]]
 name="2022-13"
 path="2022-13/main.rs"
+
+[[bin]]
+name="2022-14"
+path="2022-14/main.rs"
 
 
 [[bin]]
