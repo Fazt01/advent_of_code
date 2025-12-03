@@ -254,6 +254,14 @@ path="2024-25/main.rs"
 name="2025-01"
 path="2025-01/main.rs"
 
+[[bin]]
+name="2025-02"
+path="2025-02/main.rs"
+
+[[bin]]
+name="2025-03"
+path="2025-03/main.rs"
+
 [lib]
 name = "lib"
 path = "lib/lib.rs"
