@@ -232,9 +232,9 @@ dependencies = [
 
 [[package]]
 name = "getrandom"
-version = "0.2.11"
+version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe9006bed769170c11f845cf00c7c1e9092aeb3f268e007c3e760ac68008070f"
+checksum = "335ff9f135e4384c8150d6f27c6daed433577f86b4750418338c01a1a2528592"
 dependencies = [
  "cfg-if",
  "libc",
@@ -279,6 +279,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lambert_w"
+version = "1.2.33"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9bf449fa972fa5f9c412c4697dc472bfbf84edbaaeb078d8e42f5889fee41cde"
+dependencies = [
+ "num-complex",
+ "num-traits",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.168"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -308,19 +318,20 @@ checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 
 [[package]]
 name = "mathru"
-version = "0.15.3"
+version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6daf2fc9e56edf131c8c9ae5f748ae1409ec66cd8f5e4a40e9220a6cba2051a8"
+checksum = "f3df2d16c016b28cd94248072b6cd8106d8abd7184ec90ea09660c4b7fa989f1"
 dependencies = [
+ "lambert_w",
  "matrixmultiply",
  "rand",
 ]
 
 [[package]]
 name = "matrixmultiply"
-version = "0.3.8"
+version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7574c1cf36da4798ab73da5b215bbf444f50718207754cb522201d78d1cd0ff2"
+checksum = "a06de3016e9fae57a36fd14dba131fccf49f74b40b7fbdb472f96e361ec71a08"
 dependencies = [
  "autocfg",
  "num_cpus",
@@ -345,6 +356,24 @@ dependencies = [
  "log",
  "wasi",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "num-complex"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73f88a1307638156682bada9d7604135552957b7818057dcef22705b4d509495"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "num-traits"
+version = "0.2.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
+dependencies = [
+ "autocfg",
 ]
 
 [[package]]
